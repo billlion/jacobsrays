@@ -6,7 +6,7 @@ import numpy as np
 from . import _native
 
 __version__ = "0.1.0"
-__all__ = ["Grid", "Paths", "trace", "RayTransform", "TensorRayTransform"]
+__all__ = ["Grid", "Paths", "trace", "RayTransform", "TensorRayTransform", "TransverseRayTransform"]
 
 
 def _real(value, name):
@@ -200,3 +200,70 @@ class TensorRayTransform:
         return LinearOperator(self.shape, dtype=np.float64,
             matvec=lambda x: self.direct(np.asarray(x).reshape(self.domain_shape)),
             rmatvec=lambda y: self.adjoint(np.asarray(y).reshape(-1)).ravel())
+
+
+class TransverseRayTransform:
+    """Full rank-two symmetric TRT: integral of P_u f P_u along each ray.
+
+    P_u = I - u u.T for the unit ray direction u. Input and output use the
+    same Frobenius-orthonormal Cartesian basis as the rank-two LRT:
+    (xx, sqrt(2)xy, sqrt(2)xz, yy, sqrt(2)yz, zz) in 3D;
+    (xx, sqrt(2)xy, yy) in 2D. This retains the transverse trace.
+
+    Input shape: (components, *grid.image_shape).
+    Output shape: (rays, components); each decoded tensor annihilates u.
+    In 3D the six output entries represent three independent transverse
+    components, without choosing a detector frame. Adjoint uses Frobenius
+    products in both spaces, with no spatial/angular quadrature weights.
+
+    Requires SciPy. Caches one scalar CSR matrix and small per-ray
+    projections; does not assemble the full tensor system matrix.
+    """
+    def __init__(self, grid, starts, ends):
+        self.grid = grid
+        self.scalar = RayTransform(grid, starts, ends)
+        self.matrix = self.scalar.paths().to_csr()
+        self.exponents = tuple(_powers(2, grid.ndim))
+        self.ncomponents = len(self.exponents)
+        self.domain_shape = (self.ncomponents, *grid.image_shape)
+        self.range_shape = (self.scalar.shape[0], self.ncomponents)
+        self.shape = (math.prod(self.range_shape), math.prod(self.domain_shape))
+        d = self.scalar._ends[:, :grid.ndim]-self.scalar._starts[:, :grid.ndim]
+        norm = np.hypot.reduce(d, axis=1)
+        self.directions = np.divide(d, norm[:, None], out=np.zeros_like(d),
+                                    where=norm[:, None] != 0)
+        self._projections = (np.eye(grid.ndim)[None, :, :]
+                             - self.directions[:, :, None]*self.directions[:, None, :])
+        self._projections[norm == 0] = 0
+        self._basis = np.zeros((self.ncomponents, grid.ndim, grid.ndim))
+        for k, (i, j) in enumerate((i, j) for i in range(grid.ndim) for j in range(i, grid.ndim)):
+            self._basis[k, i, j] = self._basis[k, j, i] = 1 if i == j else 1/math.sqrt(2)
+        for a in (self.directions, self._projections, self._basis):
+            a.flags.writeable = False
+
+    def _project(self, values):
+        tensors = np.einsum('rc,cij->rij', values, self._basis)
+        tensors = self._projections @ tensors @ self._projections
+        return np.einsum('rij,cij->rc', tensors, self._basis)
+
+    def direct(self, image):
+        x = _real(image, "tensor")
+        if x.shape != self.domain_shape:
+            raise ValueError(f"tensor must have shape {self.domain_shape}")
+        values = self.matrix @ x.reshape(self.ncomponents, self.scalar.shape[1]).T
+        return self._project(values)
+
+    def adjoint(self, data):
+        y = _real(data, "data")
+        if y.shape != self.range_shape:
+            raise ValueError(f"data must have shape {self.range_shape}")
+        # P f P is self-adjoint for the Frobenius product, including arbitrary
+        # (not necessarily transverse) input data. Then backproject each entry.
+        return (self.matrix.T @ self._project(y)).T.reshape(self.domain_shape)
+
+    def as_scipy(self):
+        """LinearOperator: component-major images, ray-major data (C flatten)."""
+        from scipy.sparse.linalg import LinearOperator
+        return LinearOperator(self.shape, dtype=np.float64,
+            matvec=lambda x: self.direct(np.asarray(x).reshape(self.domain_shape)).ravel(),
+            rmatvec=lambda y: self.adjoint(np.asarray(y).reshape(self.range_shape)).ravel())
