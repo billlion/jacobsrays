@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-26",
+  "compiler": "GCC 13.3.0",
+  "cpu": "AMD EPYC 9V74",
+  "serial": {
+    "python": "3.12.14",
+    "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+    "numpy": "2.3.5",
+    "omp_num_threads": null,
+    "rays": 20000,
+    "grid": [
+      64,
+      64,
+      64
+    ],
+    "intersections": 2107166,
+    "trace_seconds": 0.04642242000409169,
+    "forward_seconds": 0.023326154005189892,
+    "adjoint_seconds": 0.024452172001474537,
+    "trace_rays_per_second": 430826.31190354127,
+    "path_bytes": 67589320,
+    "cached_csr_forward_seconds": 0.0016310270002577454,
+    "cached_csr_adjoint_seconds": 0.0019429199965088628,
+    "csr_bytes": 25365996
+  },
+  "openmp_4_threads": {
+    "python": "3.12.14",
+    "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+    "numpy": "2.3.5",
+    "omp_num_threads": "4",
+    "rays": 20000,
+    "grid": [
+      64,
+      64,
+      64
+    ],
+    "intersections": 2107166,
+    "trace_seconds": 0.009898541997245047,
+    "forward_seconds": 0.005476006997923832,
+    "adjoint_seconds": 0.024483200002578087,
+    "trace_rays_per_second": 2020499.5852486538,
+    "path_bytes": 67589320,
+    "cached_csr_forward_seconds": 0.0016162350002559833,
+    "cached_csr_adjoint_seconds": 0.002084178995573893,
+    "csr_bytes": 25365996
+  },
+  "legacy_one_pass": {
+    "rays": 200000,
+    "legacy_seconds": 0.137698449,
+    "new_seconds": 0.164195364,
+    "legacy_segments": 21068823,
+    "new_segments": 21068823,
+    "legacy_checksum": 16510838.6159,
+    "new_checksum": 16510838.6159
+  }
+}

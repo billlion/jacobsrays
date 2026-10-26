@@ -1,0 +1,16 @@
+jacobsrays
+Copyright 2026 jacobsrays contributors
+Licensed under the Apache License, Version 2.0.
+
+The project acknowledges David Szotten's 2005–2008 implementation of the
+Jacobs ray algorithm at The University of Manchester, as preserved in
+billlion/LRTinMatlab. That source carries a University of Manchester copyright
+notice. It was reviewed for interface behaviour and defects, but is not
+included in this repository or represented as Apache-licensed.
+
+Algorithm reference: F. Jacobs, E. Sundermann, B. De Sutter, M. Christiaens
+and I. Lemahieu (1998), A Fast Algorithm to Calculate the Exact Radiological
+Path through a Pixel or Voxel Space, CIT 6(1), 89–94.
+
+This initial implementation and documentation were prepared with substantial
+OpenAI Codex assistance and require the usual scientific and software review.
