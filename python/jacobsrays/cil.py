@@ -3,7 +3,7 @@
 import numpy as np
 from cil.framework import VectorGeometry, BlockGeometry
 from cil.optimisation.operators import LinearOperator
-from . import Grid, RayTransform, TensorRayTransform
+from . import Grid, RayTransform, TensorRayTransform, TransverseRayTransform
 
 
 def _image_grid(image_geometry):
@@ -80,6 +80,48 @@ class TensorJacobProjector(LinearOperator):
 
     def adjoint(self, x, out=None):
         result = self.projector.adjoint(x.as_array())
+        if out is None:
+            out = self.domain_geometry().allocate()
+        if out.shape != (self.ncomponents, 1):
+            raise ValueError("output block shape does not match tensor components")
+        for j in range(self.ncomponents):
+            out.get_item(j).fill(result[j])
+        return out
+
+
+class TransverseJacobProjector(LinearOperator):
+    """Full rank-two TRT, from image blocks to ray-vector blocks.
+
+    Both spaces have six blocks in 3D (three in 2D), ordered as the packed
+    Frobenius-orthonormal Cartesian components. Each range block contains
+    one component for every ray. See TransverseRayTransform for conventions.
+    """
+    def __init__(self, image_geometry, starts, ends):
+        ig, grid = _image_grid(image_geometry)
+        self.projector = TransverseRayTransform(grid, starts, ends)
+        self.ncomponents = self.projector.ncomponents
+        vg = VectorGeometry(self.projector.range_shape[0], dtype=np.float64)
+        super().__init__(domain_geometry=BlockGeometry(*[ig.copy() for _ in range(self.ncomponents)]),
+                         range_geometry=BlockGeometry(*[vg.copy() for _ in range(self.ncomponents)]))
+
+    def direct(self, x, out=None):
+        if x.shape != (self.ncomponents, 1):
+            raise ValueError("input block shape does not match tensor components")
+        values = np.stack([x.get_item(j).as_array() for j in range(self.ncomponents)])
+        result = self.projector.direct(values)
+        if out is None:
+            out = self.range_geometry().allocate()
+        if out.shape != (self.ncomponents, 1):
+            raise ValueError("output block shape does not match tensor components")
+        for j in range(self.ncomponents):
+            out.get_item(j).fill(result[:, j])
+        return out
+
+    def adjoint(self, x, out=None):
+        if x.shape != (self.ncomponents, 1):
+            raise ValueError("input block shape does not match tensor components")
+        values = np.column_stack([x.get_item(j).as_array() for j in range(self.ncomponents)])
+        result = self.projector.adjoint(values)
         if out is None:
             out = self.domain_geometry().allocate()
         if out.shape != (self.ncomponents, 1):

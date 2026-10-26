@@ -57,3 +57,38 @@ class CILTests(unittest.TestCase):
             solver.run(15,verbose=0)
             residual=(op.direct(solver.solution)-data).norm()
             self.assertLess(residual,.1*data.norm())
+
+    def test_transverse_blocks_and_cgls(self):
+        from cil.framework import ImageGeometry, BlockGeometry
+        from cil.optimisation.algorithms import CGLS
+        from jacobsrays.cil import TransverseJacobProjector
+        rng = np.random.default_rng(39)
+        for dim in (2, 3):
+            ig = ImageGeometry(voxel_num_x=4, voxel_num_y=3,
+                               voxel_num_z=2 if dim == 3 else 0,
+                               voxel_size_x=.7, voxel_size_y=.9, voxel_size_z=1.2,
+                               center_x=.2, center_y=-.1, dtype=np.float64)
+            starts, ends = rng.uniform(-4, 4, (2, 120, dim))
+            op = TransverseJacobProjector(ig, starts, ends)
+            x, y = op.domain_geometry().allocate(), op.range_geometry().allocate()
+            for j in range(op.ncomponents):
+                x.get_item(j).fill(rng.normal(size=ig.shape))
+                y.get_item(j).fill(rng.normal(size=120))
+            ax, aty = op.direct(x), op.adjoint(y)
+            assert_allclose(ax.dot(y), x.dot(aty), atol=3e-12)
+            values = np.stack([x.get_item(j).as_array() for j in range(op.ncomponents)])
+            expected = op.projector.direct(values)
+            out_x, out_y = op.domain_geometry().allocate(), op.range_geometry().allocate()
+            self.assertIs(op.direct(x, out=out_y), out_y)
+            self.assertIs(op.adjoint(y, out=out_x), out_x)
+            for j in range(op.ncomponents):
+                assert_allclose(out_y.get_item(j).as_array(), expected[:, j], atol=1e-14)
+                assert_allclose(out_x.get_item(j).as_array(), aty.get_item(j).as_array(), atol=1e-14)
+            wrong = BlockGeometry(ig).allocate()
+            with self.assertRaises(ValueError): op.direct(wrong)
+            with self.assertRaises(ValueError): op.direct(x, out=wrong)
+            with self.assertRaises(ValueError): op.adjoint(wrong)
+            with self.assertRaises(ValueError): op.adjoint(y, out=wrong)
+            solver = CGLS(initial=op.domain_geometry().allocate(0), operator=op, data=ax)
+            solver.run(20, verbose=0)
+            self.assertLess((op.direct(solver.solution)-ax).norm(), .1*ax.norm())

@@ -78,6 +78,13 @@ The ray direction is the unit vector from start to end. Reversing a ray changes
 the LRT by `(-1)**m`. This discretization does not remove the continuum LRT's
 potential-field nullspace or guarantee unique tensor reconstruction.
 
+`TransverseRayTransform(grid, starts, ends)` supplies the full rank-two TRT
+`integral P_u f P_u ds`, where `P_u = I - u u.T`, and its adjoint in 2D/3D.
+In 3D both input and output use `(xx, sqrt(2)xy, sqrt(2)xz, yy, sqrt(2)yz, zz)`;
+the six output entries encode a tensor with three independent transverse
+components. The transverse trace is retained. See [the Python example](examples/tensor_trt.py),
+[the MATLAB example](matlab/example_trt.m), and [the TRT conventions](docs/trt.md).
+
 [The transport example](examples/nonabelian_transport.py) solves `U'=A(x)U`
 with an ordered product of voxelwise matrix exponentials. The matrices need
 not commute. For a connection use `A(x,u)` contracted with the oriented ray
@@ -95,6 +102,8 @@ No ASTRA/TIGRE backend is needed. This first adapter returns a `VectorGeometry`;
 conversion from CIL acquisition geometries is a future extension.
 `TensorJacobProjector` supplies a `BlockGeometry` domain, with one image per
 orthonormal tensor component, and can be used with CIL CGLS in the same way. The package does not import CIL unless the adapter is used.
+`TransverseJacobProjector` uses component blocks in both domain and range;
+run `python examples/tensor_trt.py --cil` for a 3D TRT reconstruction with CGLS.
 
 ## Performance and development
 

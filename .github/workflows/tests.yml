@@ -17,6 +17,7 @@ jobs:
       - run: python -m pip install '.[scipy]'
       - run: python -m unittest discover -s tests -v
       - run: python examples/tensor_lrt.py
+      - run: python examples/tensor_trt.py
       - run: python examples/nonabelian_transport.py
       - run: cmake -S . -B build/core
       - run: cmake --build build/core --config Release
@@ -48,6 +49,7 @@ jobs:
       - run: python -c "import astra; import cil; print('ASTRA', astra.__version__)"
       - run: python -m unittest discover -s tests -v
       - run: python examples/cil_cgls.py
+      - run: python examples/tensor_trt.py --cil
   matlab:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -57,4 +59,4 @@ jobs:
       - uses: matlab-actions/setup-matlab@f9e43010f1ae678f7cfa0542fe2a4f60f7d1ad8d # v3
       - uses: matlab-actions/run-command@bfa857648f4895aa98a446fe41c85e0788421ed5 # v3
         with:
-          command: addpath('matlab'); mex('-setup','C++'); build_jacobsrays; test_jacobsrays
+          command: addpath('matlab'); mex('-setup','C++'); build_jacobsrays; test_jacobsrays; test_trt; example_trt

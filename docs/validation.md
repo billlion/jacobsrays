@@ -32,15 +32,25 @@ NumPy 2.3.5, SciPy 1.17.0.
 - MATLAB MEX build and `test_jacobsrays` passed on GitHub's Ubuntu runner
   with MATLAB R2026b and g++. Bill also confirmed the corrected suite passes
   on his own MATLAB installation. Inspect CI for the particular commit used.
+- Rank-two TRT in 2D/3D: physical-matrix formulas and independent per-voxel
+  slab clipping, full transverse trace, longitudinal/mixed components
+  annihilated, detector polarizations, reversal, axis-permutation covariance,
+  the trace/LRT identity, arbitrary-data adjoint checks, SciPy flattening,
+  empty/missing/degenerate rays, and invalid input. The CIL block adapter
+  passes `out` and adjoint checks and a CGLS solve. The 3D example reaches
+  relative data residual 0.00165152 and relative tensor error 0.0349916 after
+  40 CGLS iterations. This is one noiseless finite-scan experiment.
 
-The full local Python suite contains 17 test methods: 11 core/transport,
-two CIL integration, three native ASTRA comparison, and one CIL/ASTRA
+The full local Python suite contains 22 test methods: 11 core/transport,
+four TRT, three CIL integration, three native ASTRA comparison, and one CIL/ASTRA
 comparison. Tests for optional packages are explicitly skipped when those
 packages are absent; the `cil` CI job installs both pinned references and
-runs all 17 methods.
+runs all 22 methods.
 The GitHub workflow adds Windows/macOS builds, Python 3.10 with OpenMP,
 an integration job pinned to the tested CIL source, and a MATLAB job that
-builds the MEX gateway and runs `test_jacobsrays`. Remote CI results must be
+builds the MEX gateway and runs `test_jacobsrays`, `test_trt` and `example_trt`.
+The new TRT MATLAB tests include independent voxel clipping, packed tensor
+normalization, adjoint/reversal and empty/miss cases. Remote CI results must be
 assessed separately from the local checks above.
 
 ## Independent X-ray comparison
@@ -123,9 +133,12 @@ and [GitHub GPU runners](https://docs.github.com/en/actions/concepts/runners/lar
 - CIL uses explicit rays, default spatial dimension labels and no channel
   axis. Singleton spatial axes are rejected by this first adapter. There
   is no automatic AcquisitionGeometry conversion or nonlinear Jacobian.
-- Tensor projection caches a scalar matrix, plus direction weights and
+- Tensor projection caches a scalar matrix, plus direction weights or
+  transverse projections and
   temporary component projections. It does not assemble a dense tensor
-  matrix. High tensor ranks increase the number of components substantially.
+  matrix. The MATLAB TRT example explicitly assembles a sparse tensor matrix
+  and is intended for small problems; see [TRT memory use](trt.md).
+  High LRT tensor ranks increase the number of components substantially.
 - Adjoint means the discrete Euclidean transpose (with orthonormal tensor
   components). Other image/data inner products need explicit quadrature
   weights. Tensor nullspaces and inverse-problem regularization remain the
@@ -137,12 +150,14 @@ and [GitHub GPU runners](https://docs.github.com/en/actions/concepts/runners/lar
 python -m pip install '.[scipy]'
 python -m unittest discover -s tests -v
 python examples/tensor_lrt.py
+python examples/tensor_trt.py
 python examples/nonabelian_transport.py
 cmake -S . -B build/core
 cmake --build build/core
 ctest --test-dir build/core --output-on-failure
 # In a CIL environment:
 python examples/cil_cgls.py
+python examples/tensor_trt.py --cil
 # Independent CPU reference (Linux/Windows Python environment):
 python -m pip install 'astra-toolbox==2.5.0'
 python -m unittest discover -s tests -p test_astra.py -v
