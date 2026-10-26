@@ -31,15 +31,19 @@ NumPy 2.3.5, SciPy 1.17.0.
 The full local Python suite contains 13 test methods, including two tests
 against actual CIL. Without CIL, only those two tests are explicitly skipped.
 The GitHub workflow adds Windows/macOS builds, Python 3.10 with OpenMP,
-and an integration job pinned to the tested CIL source. Remote CI results
-must be assessed separately from the local checks above.
+an integration job pinned to the tested CIL source, and a MATLAB job that
+builds the MEX gateway and runs `test_jacobsrays`. Remote CI results must be
+assessed separately from the local checks above.
 
 ## Not yet validated / deliberately limited
 
-- **MATLAB is unavailable in the development environment.** The MEX source,
-  build script, compatibility wrapper and `test_jacobsrays.m` are included,
-  but the MEX gateway has not been compiled or executed in MATLAB. Run
-  `build_jacobsrays; test_jacobsrays` before relying on it.
+- **MATLAB validation:** Bill reported a successful MEX build with g++ and
+  successful geometry assertions before the empty-batch matrix test failed.
+  The wrappers now bypass `repelem` for empty intersections and preserve the
+  shape of single-ray internal triples. Regression assertions cover empty,
+  all-miss and mixed batches, plus both legacy output formats. The MATLAB CI
+  job executes the full suite; inspect its result on the commit being used.
+  Run `build_jacobsrays; test_jacobsrays` on your MATLAB release as well.
 - This is straight-line traversal on uniform Cartesian grids. Rotated grids
   require transforming endpoints first; curved rays, adaptive grids and
   finite-width beams are not implemented. There is no GPU backend.

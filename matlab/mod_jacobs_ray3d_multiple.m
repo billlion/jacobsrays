@@ -20,8 +20,13 @@ end
 paths=jacobsrays(shape,[px(:),py(:),pz(:)],[qx(:),qy(:),qz(:)],spacing,origin);
 if strcmp(output,'internal')
     if prod(shape)>flintmax, error('jacobsrays:tooLarge','Indices exceed flintmax'); end
+    if isempty(paths.indices)
+        result=zeros(0,3);
+        return;
+    end
     rays=repelem((1:numel(px))',double(diff(paths.offsets)));
-    result=[rays,double(paths.indices),paths.lengths];
+    % For one input ray, repelem treats its scalar input as a row vector.
+    result=[rays(:),double(paths.indices),paths.lengths];
 else
     result=jacobsrays_matrix(paths);
 end
