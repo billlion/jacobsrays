@@ -27,23 +27,85 @@ NumPy 2.3.5, SciPy 1.17.0.
   residual does not demonstrate uniqueness or accurate tensor recovery.
 - A compiled reproduction of the historical partial-ray bug and a
   head-to-head legacy traversal benchmark; see the audit/performance notes.
+- Independent ASTRA 2.5.0 CPU line-projector comparisons, both directly and
+  through the pinned CIL ASTRA plugin; see the details below.
+- MATLAB MEX build and `test_jacobsrays` passed on GitHub's Ubuntu runner
+  with MATLAB R2026b and g++. Bill also confirmed the corrected suite passes
+  on his own MATLAB installation. Inspect CI for the particular commit used.
 
-The full local Python suite contains 13 test methods, including two tests
-against actual CIL. Without CIL, only those two tests are explicitly skipped.
+The full local Python suite contains 17 test methods: 11 core/transport,
+two CIL integration, three native ASTRA comparison, and one CIL/ASTRA
+comparison. Tests for optional packages are explicitly skipped when those
+packages are absent; the `cil` CI job installs both pinned references and
+runs all 17 methods.
 The GitHub workflow adds Windows/macOS builds, Python 3.10 with OpenMP,
 an integration job pinned to the tested CIL source, and a MATLAB job that
 builds the MEX gateway and runs `test_jacobsrays`. Remote CI results must be
 assessed separately from the local checks above.
 
+## Independent X-ray comparison
+
+`tests/test_astra.py` uses ASTRA's CPU `line` and `line_fanflat` projectors.
+Their weights are zero-width ray/pixel intersection lengths, which match
+our piecewise-constant scalar model. The comparison covers:
+
+- Full system matrices for parallel and fan beams: 29 views, 41 detector
+  elements, and an 11-by-8 image, at pixel widths 1, 0.375 and 2.5. These six
+  matrices cover 7,134 rays and check every voxel impulse coefficient,
+  including zero coefficients and rays that miss the image.
+- Translated image windows, physical length scaling, and matrix-free forward
+  and adjoint results for signed random inputs.
+- Exactly known axis-aligned lengths and an asymmetric row pattern to anchor
+  orientation. Native ASTRA image rows descend in physical y; jacobsrays rows
+  ascend. The test permutes matrix columns accordingly and verifies that
+  omitting this permutation would fail.
+- CIL's `ProjectionOperator(..., device='cpu')` against `JacobProjector`, for
+  parallel/fan geometries, left/right detector ordering, and an initial angle
+  offset. The rays are constructed independently of CIL's ASTRA converter.
+  These wrapped comparisons use centred images and compare both forward
+  projection and backprojection. CIL's 2D adapter already handles ASTRA's
+  y convention, so no extra image flip is applied there.
+
+ASTRA's line kernels use float32 internally; jacobsrays uses float64.
+Tolerances are `3e-4 * pixel_width` absolute per matrix coefficient and
+`2e-5` relative L2 for matrices, forward projections and adjoints. Near-axis
+rays amplify float32 roundoff. During validation, the largest discrepant
+coefficients were also checked by direct ray/voxel slab clipping and agreed
+with jacobsrays to double precision. No fitted scale factor or exclusion of
+small coefficients is used. The test prints measured errors in the CI log.
+
+Scope matters:
+
+- The external comparison uses **square pixels**. ASTRA's parallel line
+  kernel explicitly states this limitation; an anisotropic probe disagreed
+  substantially for both line kernels. Anisotropic grids remain covered by
+  our independent plane-enumeration oracle, not claimed as ASTRA-validated.
+- This validates 2D scalar projection coefficients. It does not independently
+  certify 3D traversal, tensor normalization, or ordered non-abelian transport.
+  A scalar system matrix cannot establish the order of intersections along
+  a ray; the existing ordered-path and noncommuting-transport tests remain.
+- ASTRA's CUDA projector uses the Joseph/interpolated model, so equality to
+  our intersection-length matrix is not expected. For a future 3D GPU
+  comparison, CIL/TIGRE with `direct_method='Siddon'` is a suitable candidate.
+  CIL documents TIGRE's `matched` backprojection as approximately matching
+  the interpolated projector; it should not be assumed to be the exact
+  transpose of the Siddon forward projector.
+
+No GPU is needed for the current comparison. The ASTRA pip wheel installs
+CUDA runtime libraries, but the tests explicitly select CPU line projectors
+and ran locally with `astra.use_cuda()` false. GPU validation would require
+a separately provisioned runner: GitHub's paid GPU larger runners require
+an organisation on Team/Enterprise Cloud, or a self-hosted GPU machine can
+be used. No GPU runner or paid service is configured by this project.
+
+References: [ASTRA projector models](https://astra-toolbox.com/docs/proj2d.html),
+[ASTRA geometry conventions](https://astra-toolbox.com/docs/geom2d.html),
+[parallel line kernel limitations](https://github.com/astra-toolbox/astra-toolbox/blob/v2.5.0/include/astra/ParallelBeamLineKernelProjector2D.inl),
+[CIL's TIGRE interface](https://github.com/TomographicImaging/CIL/blob/b39f95799bf1af891a896fc4be704986284b593e/Wrappers/Python/cil/plugins/tigre/ProjectionOperator.py),
+and [GitHub GPU runners](https://docs.github.com/en/actions/concepts/runners/larger-runners).
+
 ## Not yet validated / deliberately limited
 
-- **MATLAB validation:** Bill reported a successful MEX build with g++ and
-  successful geometry assertions before the empty-batch matrix test failed.
-  The wrappers now bypass `repelem` for empty intersections and preserve the
-  shape of single-ray internal triples. Regression assertions cover empty,
-  all-miss and mixed batches, plus both legacy output formats. The MATLAB CI
-  job executes the full suite; inspect its result on the commit being used.
-  Run `build_jacobsrays; test_jacobsrays` on your MATLAB release as well.
 - This is straight-line traversal on uniform Cartesian grids. Rotated grids
   require transforming endpoints first; curved rays, adaptive grids and
   finite-width beams are not implemented. There is no GPU backend.
@@ -81,6 +143,10 @@ cmake --build build/core
 ctest --test-dir build/core --output-on-failure
 # In a CIL environment:
 python examples/cil_cgls.py
+# Independent CPU reference (Linux/Windows Python environment):
+python -m pip install 'astra-toolbox==2.5.0'
+python -m unittest discover -s tests -p test_astra.py -v
+# Also install the pinned CIL source above to include the wrapped comparison.
 ```
 
 The benchmark scripts do not enforce timing thresholds: timing is hardware
