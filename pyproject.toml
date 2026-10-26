@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=77", "numpy>=1.23"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jacobsrays"
+version = "0.1.0"
+description = "Ordered voxel ray traversal for tomography and transport ODEs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+dependencies = ["numpy>=1.23"]
+
+[project.optional-dependencies]
+scipy = ["scipy>=1.9"]
+
+[project.urls]
+Repository = "https://github.com/billlion/jacobsrays"
+
+[tool.setuptools.packages.find]
+where = ["python"]
