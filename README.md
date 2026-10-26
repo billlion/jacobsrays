@@ -119,6 +119,12 @@ The default build is serial. Backprojection deliberately uses deterministic
 serial accumulation; it does not allocate a full image per thread. Chunk ray
 batches when path storage would be too large. See [the performance notes](docs/performance.md).
 
+The CI integration job also compares 2D scalar projections against ASTRA's
+independent CPU line projectors, directly and through CIL. It checks full
+system matrices, forward projections and adjoints without requiring a GPU.
+See [validation](docs/validation.md#independent-x-ray-comparison) for reproduction,
+coordinate conventions, precision tolerances and the square-pixel scope.
+
 ## Provenance and references
 
 Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). This implementation was
