@@ -85,6 +85,11 @@ the six output entries encode a tensor with three independent transverse
 components. The transverse trace is retained. See [the Python example](examples/tensor_trt.py),
 [the MATLAB example](matlab/example_trt.m), and [the TRT conventions](docs/trt.md).
 
+The [slice-by-slice example](examples/trt_slices.py) reconstructs the published
+Desai--Lionheart Gaussian `f33` component with a 2D scalar solver. It compares
+TRT data, scalar voxel projections and analytic Gaussian integrals; see
+[the experiment and its limitations](docs/trt_slices.md).
+
 [The transport example](examples/nonabelian_transport.py) solves `U'=A(x)U`
 with an ordered product of voxelwise matrix exponentials. The matrices need
 not commute. For a connection use `A(x,u)` contracted with the oriented ray

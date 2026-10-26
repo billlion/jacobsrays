@@ -41,11 +41,16 @@ NumPy 2.3.5, SciPy 1.17.0.
   relative data residual 0.00165152 and relative tensor error 0.0349916 after
   40 CGLS iterations. This is one noiseless finite-scan experiment.
 
-The full local Python suite contains 22 test methods: 11 core/transport,
-four TRT, three CIL integration, three native ASTRA comparison, and one CIL/ASTRA
+- A [slice-by-slice Gaussian example](trt_slices.md) compares the TRT's `33`
+  output with scalar 2D projections and reconstructions. Its independent
+  analytic finite-segment Gaussian integrals are checked against adaptive
+  quadrature, including clipping, axis-parallel rays, misses and reversal.
+
+The full local Python suite contains 24 test methods: 11 core/transport,
+four TRT, two slice-example, three CIL integration, three native ASTRA comparison, and one CIL/ASTRA
 comparison. Tests for optional packages are explicitly skipped when those
 packages are absent; the `cil` CI job installs both pinned references and
-runs all 22 methods.
+runs all 24 methods and the full slice example.
 The GitHub workflow adds Windows/macOS builds, Python 3.10 with OpenMP,
 an integration job pinned to the tested CIL source, and a MATLAB job that
 builds the MEX gateway and runs `test_jacobsrays`, `test_trt` and `example_trt`.
@@ -151,6 +156,7 @@ python -m pip install '.[scipy]'
 python -m unittest discover -s tests -v
 python examples/tensor_lrt.py
 python examples/tensor_trt.py
+python examples/trt_slices.py
 python examples/nonabelian_transport.py
 cmake -S . -B build/core
 cmake --build build/core

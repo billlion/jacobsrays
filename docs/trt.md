@@ -84,6 +84,11 @@ component), both in the order above. It supports `direct`, `adjoint`, and
 caller-provided `out` buffers. Image geometry restrictions match the other
 CIL adapters: single channel, default spatial labels, no singleton axes.
 
+For a separate diagonal-component reconstruction using scalar 2D inversions,
+run `python examples/trt_slices.py`. This uses the published Desai--Lionheart
+Gaussian `f33` component on two grid-aligned slices, with analytic data as
+an independent reference. See [the slice experiment](trt_slices.md).
+
 ## Detector components and scalar measurements
 
 Choose orthonormal transverse vectors `a,b` and form `Q = [a b]`. From the
