@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+// Core ray/voxel traversal shared by the Python and MATLAB wrappers.
+// Start with walk() below for the algorithm, reference and callback contract.
 #ifndef JACOBSRAYS_TRAVERSE_HPP
 #define JACOBSRAYS_TRAVERSE_HPP
 #include <algorithm>
@@ -45,8 +47,26 @@ inline void validate_ray(const Grid& g, const double* p, const double* e) {
         throw std::invalid_argument("ray length overflows double precision");
 }
 
-// Visit only positive-length voxel intervals, in p -> e order. No allocation.
+// Ordered Cartesian ray/voxel traversal in the Siddon/Jacobs family.
+//
+// Reference: F. Jacobs, E. Sundermann, B. De Sutter, M. Christiaens and
+// I. Lemahieu, "A Fast Algorithm to Calculate the Exact Radiological Path
+// through a Pixel or Voxel Space", CIT 6(1), 89-94 (1998).
+// https://biblio.ugent.be/publication/281913
+// See NOTICE and docs/legacy-audit.md for this implementation's provenance.
+//
+// Clip the finite segment to the grid's axis-aligned slabs, then merge the
+// increasing sequences of x-, y- and z-plane crossing parameters. The next
+// smallest crossing ends the current voxel interval; tied axes advance
+// together. This visits the intersections in ray order without a global sort
+// or an allocation. Crossings are recomputed from integer plane numbers to
+// avoid accumulated stepping drift; boundary ownership is specified below.
+//
+// Emit only positive-length voxel intervals, in p -> e order.
 // Callback: emit(x-fastest zero-based index, physical length, t_enter, t_exit).
+// The callback can count/store intersections or accumulate a projection.
+// Its type is a template parameter so callers can inline it into the loop;
+// the template implementation therefore lives in this header.
 // Inputs must be validated before calling. t parameterises p+t*(e-p), 0<=t<=1.
 template<class Emit>
 inline void walk(const Grid& g, const double* p, const double* e, Emit emit) {
