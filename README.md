@@ -4,6 +4,11 @@ Ordered Cartesian voxel intersections for scalar and tensor tomography, and
 transport ODEs along rays. A small C++11 kernel is shared by Python and MATLAB.
 This is an initial implementation; see [validation and limitations](docs/validation.md).
 
+Read the [illustrated user and methods guide](docs/paper/jacobsrays.pdf)
+for the mathematical conventions, code history, interfaces, validation,
+performance and worked examples. [LaTeX sources and build instructions](docs/paper/README.md)
+are included.
+
 To read the core algorithm, start with `jacobsrays::walk` in
 [traverse.hpp](include/jacobsrays/traverse.hpp), which includes the Jacobs
 reference, an algorithm overview and the callback contract.

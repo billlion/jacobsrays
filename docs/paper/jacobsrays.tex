@@ -1,0 +1,919 @@
+% SPDX-License-Identifier: Apache-2.0
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern,microtype}
+\usepackage[margin=26mm]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx,booktabs,tabularx,array}
+\usepackage{xcolor,listings,enumitem,needspace}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+\usepackage{bookmark}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,citecolor=blue!45!black,
+ urlcolor=blue!45!black,pdftitle={jacobsrays: ordered voxel intersections},
+ pdfauthor={jacobsrays contributors}}
+\definecolor{codebg}{RGB}{246,248,250}
+\lstset{basicstyle=\ttfamily\small,backgroundcolor=\color{codebg},
+ frame=single,rulecolor=\color{black!15},breaklines=true,
+ columns=fullflexible,keepspaces=true,showstringspaces=false,
+ aboveskip=10pt,belowskip=10pt,xleftmargin=5pt,xrightmargin=5pt,
+ keywordstyle=\color{blue!55!black},commentstyle=\color{black!60}}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+\widowpenalty=10000
+\clubpenalty=10000
+\setlength{\emergencystretch}{2em}
+\renewcommand{\bibfont}{\small\raggedright}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\setlist{itemsep=2pt,topsep=4pt}
+\newcommand{\dd}{\,\mathrm{d}}
+\newcommand{\tr}{\operatorname{tr}}
+\newcommand{\pack}{\operatorname{pack}}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\repo}[2]{\href{https://github.com/billlion/jacobsrays/blob/854c6aa60d64be38619be6d268ceb6b7b56da5f7/#1}{\code{#2}}}
+\newcommand{\atomiclink}{\href{https://github.com/billlion/jacobsrays/pull/7}{PR~7}}
+\title{\texttt{jacobsrays}: ordered voxel intersections\\for tensor tomography and transport}
+\author{Project documentation --- user and methods guide}
+\date{Draft, 27 October 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+Ray--voxel intersections provide a reusable geometric foundation for scalar
+and tensor tomography and for transport equations along rays. This guide
+describes a small C++11 implementation with Python and MATLAB interfaces,
+including integration with the Core Imaging Library (CIL). It specifies the
+coordinate and tensor conventions, explains how the same intersection
+weights produce matched forward and adjoint operators, and shows why
+ordered intervals are needed for non-commuting matrix transport. We document
+the connection to David Szotten's earlier code, independent validation
+against analytic calculations and ASTRA, and measured CPU performance,
+including an optional OpenMP atomic adjoint. Worked examples distinguish
+discrete consistency from continuum accuracy. This is practical software
+documentation, not a claim of a new ray-tracing algorithm or a general
+solution to tensor or non-Abelian inverse problems.
+\end{abstract}
+
+\textbf{Repository:} \url{https://github.com/billlion/jacobsrays}.
+The implementation is Apache-2.0 licensed. This draft describes main revision
+\href{https://github.com/billlion/jacobsrays/commit/854c6aa60d64be38619be6d268ceb6b7b56da5f7}{\code{854c6aa}}
+(package version 0.1.0), including the optional atomic adjoint merged in
+\atomiclink. Its recorded measurements were made on revision
+\href{https://github.com/billlion/jacobsrays/commit/f6464f3cb3565c8a2f0021138e96efcd0e7958c0}{\code{f6464f3}} before that merge.
+
+\subsection*{Reading this guide}
+For a first calculation, read the coordinate contract in
+Section~\ref{sec:geometry} and the examples in Section~\ref{sec:examples}.
+The Python listings are complete executable files; the MATLAB and CIL
+sections point to full examples in the repository.
+
+For a new tensor or transport model, start with the operator conventions
+in Section~\ref{sec:tensors}. In particular, tensor packing, transverse
+trace and multiplication order are part of the numerical model.
+
+For assessing results or choosing an implementation strategy, consult the
+validation evidence in Section~\ref{sec:validation} and the measured time
+and memory tradeoffs in Section~\ref{sec:speed}. The limitations accompany
+each experiment so that reproducible consistency checks are not mistaken
+for reconstruction accuracy claims.
+
+\clearpage
+\tableofcontents
+\clearpage
+
+\section{Why a small ray--voxel library?}
+Many imaging models share a geometric question: which cells of a Cartesian
+grid does a straight ray cross, and for how long does it remain in each?
+For a piecewise-constant scalar field, these lengths are the coefficients
+of a discrete X-ray transform. For a tensor field, the same coefficients
+can be combined with contractions or projections depending on the ray
+direction. For a transport equation, the entry and exit points define
+successive integration intervals. Keeping the geometry separate makes it
+possible to change the measurement model without rewriting traversal.
+
+This separation is useful in experimental tensor imaging: one may need a
+new tensor contraction, a polarisation readout, an unusual set of rays, or
+the derivative of a nonlinear forward model. A compact, inspectable CPU
+kernel also provides a reference against which more specialised
+implementations can be checked. It does not replace a complete imaging
+toolbox, detector model or reconstruction method.
+
+The main supported uses are the scalar X-ray transform, the longitudinal
+ray transform (LRT) of symmetric tensors, and the full transverse ray
+transform (TRT) of symmetric rank-two tensors. The truncated transverse ray
+transform (TTRT), used in linearised photoelastic tomography, can be built
+from the same geometry and transverse projection. The distinction between
+full and truncated data matters: the latter removes the transverse trace.
+Section~\ref{sec:tensors} gives the precise conventions and implementation
+status. ORT is a proposed further application; this draft does not assign
+it a definition or claim an implementation. A public specification and
+validation example are needed before adding it to the API.
+
+Non-Abelian ray transforms require additional information that scalar
+matrix storage need not preserve: \emph{travel order}. Rotations or other
+matrix propagators generally do not commute, so changing the order of
+encountered voxels changes the result. Polarimetric neutron imaging is a
+concrete application~\cite{desai2020,sales2018}. The package returns ordered
+intervals directly rather than requiring users to infer order from a sparse
+matrix.
+
+\subsection{Relation to ASTRA, TIGRE and CIL}
+ASTRA~\cite{astra2016} and TIGRE~\cite{tigre2016} provide mature tomography
+infrastructure and GPU projectors. They are natural choices for many large
+scalar imaging problems. \code{jacobsrays} currently supplies a CPU kernel,
+explicit segment geometry, and a small set of scalar and tensor operators.
+Its useful distinguishing feature here is access to ordered cell intervals
+and a common traversal for custom forward models.
+
+Comparisons must specify a projector, not just a toolbox name. ASTRA's 2D
+CPU \code{line} projector uses intersection lengths; its \code{linear}
+projector uses a Joseph-type interpolation model~\cite{astraprojectors}.
+TIGRE also exposes different forward and backward models. For example, the
+documented CIL TIGRE adapter distinguishes Siddon and interpolated forward
+projection, and describes its matched adjoint weights as approximately
+matching the interpolated method~\cite{ciltigre}. This does not establish
+an exact transpose for every possible pairing. Independent numerical
+checks should follow the chosen configuration.
+
+CIL~\cite{cil2021} provides optimisation algorithms and data containers
+into which a new operator can be inserted. Our adapter therefore implements
+CIL's operator interface directly, without requiring ASTRA or TIGRE as a
+backend. No comparative GPU speed result is claimed in this guide.
+
+\section{History and provenance}
+\label{sec:history}
+The underlying traversal belongs to the Siddon/Jacobs family.
+Siddon~\cite{siddon1985} describes the grid through its planes rather than
+testing every voxel separately. Jacobs et al.~\cite{jacobs1998} describe
+an efficient calculation of the radiological path. The present implementation
+merges the ordered sequences of plane crossings; it does not claim a new
+geometric algorithm.
+
+David Szotten developed a MATLAB-wrapped implementation at Manchester;
+the source preserved in \code{LRTinMatlab} carries 2005--2008 attribution.
+His thesis concerns limited-data X-ray and polarised-light tomography,
+including the TTRT~\cite{szotten2011}. The university catalogue records the
+award on 3 December 2010, while the later papers cite the thesis as 2011;
+the bibliography follows those citations and records this distinction.
+
+The historical connection is documented in several public sources:
+\begin{itemize}
+\item The 2006 MIMS preprint by Szotten, Lionheart and Tomlinson describes
+using Jacobs intersection lengths to construct scalar, transverse and
+truncated transverse matrices. It also describes accumulating the transpose
+ray by ray when storing the full matrix is impractical~\cite{szotten2006}.
+It is cited here as a preprint, not as a subsequently published journal
+article.
+\item Desai and Lionheart's three-axis TRT reconstruction paper provides
+the published tensor phantom used in our slice example. Its numerical
+method section explicitly follows the ray integration procedure in
+Section 5.1.4 of Szotten's thesis~\cite{desai2016}. The MATLAB research-code repository
+preserves the older ray implementation~\cite{lrtmatlab}.
+\item Section 7 of Desai et al.'s polarimetric-neutron paper explicitly
+states that its forward solver used the Jacobs method as implemented in
+Szotten's thesis, modified to return voxel encounter order. Voxelwise
+constant magnetic fields then give successive rotation matrices along
+the ray~\cite{desai2020}. The experimental context is described by
+Sales et al.~\cite{sales2018}.
+\end{itemize}
+
+This history explains the present emphasis on both lengths and ordering.
+The new C++ implementation was written afresh after an audit of the older
+interface and behaviour. The inspected legacy tree did not contain a
+licence granting redistribution of its code; no legacy source is bundled
+or relicensed. The repository's \code{NOTICE} records the intellectual
+provenance and development assistance.
+
+The audit found practical reasons to make the conventions explicit. In the
+old implementation, non-square grids could receive an incorrect linear
+index, the final partial segment could be mishandled, and some reported
+weights were parameter intervals rather than physical lengths. A MATLAB
+sparse-sizing idiom could overwrite a genuine final coefficient. The
+legacy help text also disagreed with the implementation about the grid
+offset. These are recorded with small examples in
+\repo{docs/legacy-audit.md}{docs/legacy-audit.md}; they are not reasons to
+treat all historical numerical results as invalid. The compatibility
+wrapper preserves the old calling convention while using the corrected,
+documented geometry.
+
+\section{Geometry, storage and the traversal kernel}
+\label{sec:geometry}
+\subsection{Coordinate contract}
+Let the grid have shape $(n_x,n_y,n_z)$, positive spacing
+$h=(h_x,h_y,h_z)$ and lower corner $o$. Voxel $(i,j,k)$ is
+\[
+ [o_x+ih_x,o_x+(i+1)h_x)\times
+ [o_y+jh_y,o_y+(j+1)h_y)\times
+ [o_z+kh_z,o_z+(k+1)h_z).
+\]
+The zero-based linear index is $i+n_x(j+n_y k)$. Thus $x$ is the fastest
+varying coordinate. Two-dimensional grids use the same rules with the
+$z$ coordinate omitted at the public interface.
+
+Inputs are finite segments
+\begin{equation}
+ x_r(t)=a_r+t(b_r-a_r),\qquad 0\leq t\leq1.
+ \label{eq:segment}
+\end{equation}
+Endpoints need not lie outside the grid. To approximate an infinite line
+through the object, choose endpoints enclosing its entire intersection
+with the grid. If an emitted interval is $[t_0,t_1]$, its physical length is
+\begin{equation}
+ \ell=(t_1-t_0)\lVert b_r-a_r\rVert_2.
+ \label{eq:length}
+\end{equation}
+The parameters themselves are dimensionless, not arclengths.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}lYY@{}}
+\toprule
+Convention & Python & MATLAB \\
+\midrule
+Geometry arguments & $(n_x,n_y[,n_z])$, xyz endpoints & Same \\
+Image array shape & $(n_z,n_y,n_x)$ or $(n_y,n_x)$ & $[n_x,n_y,n_z]$ or $[n_x,n_y]$ \\
+Linear storage & C order; x fastest & Column major; x fastest \\
+Indices and offsets & Zero based & One based \\
+Scalar range & One number per input ray & One number per input ray \\
+Empty/missing rays & Repeated offsets; zero matrix rows & Same meaning \\
+\bottomrule
+\end{tabularx}
+\caption{Coordinate and storage conventions. Array shape reversal is deliberate;
+it does not reverse the physical coordinate axes.}
+\end{table}
+
+A parallel ray on an internal cell plane belongs to the higher-index cell.
+The lower exterior face is included and the upper exterior face excluded.
+Point tangencies, misses and zero-length segments emit no positive-length
+intervals. These boundary choices have measure zero in continuum theory
+but are essential for reproducible discrete tests.
+
+\subsection{Streaming the intersections}
+The computational core is
+\repo{include/jacobsrays/traverse.hpp}{include/jacobsrays/traverse.hpp}.
+It is a header because the central \code{walk<Emit>} routine is templated
+on its output action. Keeping its definition visible lets the compiler
+specialise and inline different actions without a virtual call at every
+intersection. Header implementation is a C++ design choice, not an
+assumption that headers execute faster.
+
+Conceptually the traversal performs the following operations:
+\begin{enumerate}
+\item Clip the segment to the grid box by intersecting its parameter interval
+with the coordinate slabs. Return if there is no positive-length overlap.
+\item Find the cell at entry and the next grid-plane crossing for each axis.
+An axis parallel to the ray contributes no finite next crossing.
+\item Take the earliest next crossing, or the clipped segment exit if sooner.
+Emit the current cell index, physical length, and entry/exit parameters.
+\item Advance every axis tied at that crossing, update its next plane, and
+continue until exit.
+\end{enumerate}
+This merges two or three monotone crossing sequences without sorting a
+list of all crossings. Work is $O(K_r)$ for $K_r$ crossed cells, with
+$O(1)$ traversal workspace per ray. Next crossing parameters are recomputed
+from integer plane positions to limit cumulative drift. Exact ties advance
+all tied axes. Numerically near-tied crossings can produce very short
+positive intervals; the code does not silently merge them using an
+arbitrary absolute tolerance. Reversal is consequently checked numerically,
+not promised to be bitwise identical.
+
+Finite inputs, representable grid extents and integer index ranges are
+checked. There is no absolute small-direction cutoff such as $10^{-8}$;
+such a cutoff would depend on the user's physical units. Standard compiler
+optimisation is appropriate. Unrestricted fast-math transformations are
+not assumed because the algorithm uses finite-value and infinity semantics.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.88\linewidth]{figures/ordered-ray.pdf}
+\caption{A finite segment clipped to a grid, with intervals numbered in travel
+order. Scalar projection sums length-weighted values. Matrix transport
+applies the first propagator first, placing later factors to its left for
+the convention $U'=GU$. Cell numbers in the sketch are encounter labels,
+not linear storage indices.}
+\end{figure}
+
+\subsection{Retain paths or recompute them?}
+\code{trace} returns ragged ordered arrays: \code{offsets}, \code{indices},
+\code{lengths}, \code{t_enter} and \code{t_exit}. Entries for ray $r$ are
+selected by successive offsets, in start-to-end order. Native batch tracing
+counts intersections and then fills exactly sized arrays in a second pass.
+The Python wrapper releases the GIL during native computation.
+
+For $K$ total intersections and $R$ rays, the returned arrays occupy
+$32K+8(R+1)$ bytes with 64-bit indices and double precision lengths and
+parameters. This excludes object headers and input geometry. Batching rays
+limits this storage. Conversion to a scalar sparse matrix discards the
+entry/exit parameters, and subsequent sparse operations may reorder
+columns. Use the original paths for transport ODEs.
+
+The scalar \code{RayTransform} instead retraces rays on each application,
+avoiding persistent intersection storage. Python tensor operators cache
+one scalar CSR matrix, and combine it with small direction-dependent
+operations. MATLAB exposes sparse matrices. These choices trade setup
+cost and memory against repeated-iteration speed; no single choice wins
+for every acquisition.
+
+\section{Operators, adjoints and tensor conventions}
+\label{sec:tensors}
+\subsection{Scalar projection and a matched backprojector}
+For piecewise-constant voxel values $x_i$, define
+\begin{equation}
+ A_{ri}=\operatorname{length}(\text{segment }r\cap\text{voxel }i),
+ \qquad (Ax)_r=\sum_i A_{ri}x_i,
+ \qquad (A^\mathsf{T}y)_i=\sum_r A_{ri}y_r.
+ \label{eq:transpose}
+\end{equation}
+The native forward callback adds $\ell x_i$ to one ray output; the
+backprojection callback adds $\ell y_r$ to one voxel output. Both call the
+same traversal with the same endpoints. Backprojection does not reverse
+the ray and does not substitute another interpolation or quadrature rule.
+
+CIL's \code{JacobProjector.adjoint} method is defined in
+\path{python/jacobsrays/cil.py}. It calls the main Python module's
+\code{RayTransform.adjoint} method, defined in
+\path{python/jacobsrays/__init__.py}. The native backprojector in
+\code{src/python.cpp} then invokes \code{walk} in \code{traverse.hpp}.
+Tensor adjoints follow their
+cached scalar matrix transpose instead of this matrix-free native path.
+
+This is a \emph{matched discrete transpose}, up to floating-point arithmetic.
+It is the adjoint for ordinary Euclidean array dot products. For weighted
+inner products with positive definite matrices $W_X$ and $W_Y$, the
+corresponding adjoint is $W_X^{-1}A^\mathsf{T}W_Y$. Voxel volumes, detector
+areas and angular quadrature weights are not inserted automatically.
+
+An unmatched pair uses a backward operator $B\ne A^\mathsf{T}$. Such pairs
+can be useful computationally, but replacing $A^\mathsf{T}$ by $B$ changes
+the algebra of an iterative method: $BA$ need not be symmetric positive
+semidefinite and $B(Ax-y)$ need not be the least-squares gradient. The usual
+CGLS reasoning therefore no longer applies. Perturbation and convergence
+analysis, and methods designed for unmatched pairs, are discussed in
+\citet{elfving2018,hansen2022}. Neither hardware texture interpolation nor
+GPU execution alone establishes that a particular pair is unmatched;
+the actual weights and their transpose must be examined.
+
+A matched pair still does not guarantee an accurate or unique reconstruction.
+Nullspaces, acquisition coverage, noise, discretisation and regularisation
+remain properties of the inverse problem.
+
+\subsection{LRT and orthonormal packing}
+For a symmetric rank-$m$ tensor field $f$ and an oriented unit ray direction
+$u$, the LRT is
+\begin{equation}
+ (I_m f)(r)=\int_r f(x)[u,\ldots,u]\dd s.
+\end{equation}
+Let $\alpha=(\alpha_1,\ldots,\alpha_d)$ with $|\alpha|=m$, and
+$c_\alpha=m!/\alpha!$. Store the tensor component as
+$x_\alpha=\sqrt{c_\alpha}f_\alpha$, and define
+$w_{r\alpha}=\sqrt{c_\alpha}u_r^\alpha$. Then
+\begin{equation}
+ (Lx)_r=\sum_\alpha w_{r\alpha}(Ax_\alpha)_r,
+ \qquad
+ (L^\mathsf{T}y)_\alpha=A^\mathsf{T}(w_{\cdot\alpha}\odot y).
+\end{equation}
+This orthonormal packing makes an ordinary component dot product equal to
+the tensor Frobenius product, including the multiplicities of off-diagonal
+components. In 3D at rank two it is
+\begin{equation}
+ \pack(F)=(F_{11},\sqrt2F_{12},\sqrt2F_{13},
+                   F_{22},\sqrt2F_{23},F_{33}).
+ \label{eq:pack}
+\end{equation}
+In 2D it is $(F_{11},\sqrt2F_{12},F_{22})$.
+\code{TensorRayTransform} implements these formulas in 2D and 3D for
+nonnegative integer rank; its \code{exponents} attribute records the
+component order. Reversing the endpoints changes the LRT by $(-1)^m$.
+The familiar potential-field nullspace of the continuum LRT is not removed
+by this discretisation~\cite{sharafutdinov1994}.
+
+\subsection{Full rank-two TRT, trace tests and TTRT}
+Let $P_u=I-uu^\mathsf{T}$. The implemented full TRT is
+\begin{equation}
+ (Jf)(r)=\int_r P_{u_r}f(x)P_{u_r}\dd s.
+ \label{eq:trt}
+\end{equation}
+\code{TransverseRayTransform} uses the packing in~\eqref{eq:pack} in both
+domain and range. Its 3D input has shape $(6,n_z,n_y,n_x)$ and output has
+shape $(R,6)$. The six output entries encode only three independent
+transverse components; retaining a Cartesian representation avoids an
+arbitrary detector-frame choice. If $E$ contains two orthonormal transverse
+detector axes, the detector matrix is $E^\mathsf{T}(Jf)E$.
+
+For each ray the map $F\mapsto P_uFP_u$ is self-adjoint in the Frobenius
+product. Thus the discrete adjoint applies this map to the input tensor
+data and backprojects each resulting component with $A^\mathsf{T}$.
+It is defined even for data that are not already transverse. Small
+per-ray projectors and one scalar CSR matrix are retained; a dense block
+tensor matrix is not assembled in Python.
+
+Two useful identities follow directly:
+\begin{equation}
+ \tr(Jf)=X(\tr f)-I_2f,
+ \qquad
+ J(\phi I)=(X\phi)P_u.
+ \label{eq:trace}
+\end{equation}
+Here $X$ denotes the scalar line integral along the same ray. Consequently
+$\tr J(\phi I)=(d-1)X\phi$. These test the retained transverse trace as well
+as the component packing. The full TRT is relevant to published tensor
+imaging models including diffraction tomography of strain~\cite{lionheart2015}
+and the reconstruction analysis of \citet{desai2016}.
+
+For rank two in 3D, define the transverse trace-free map
+\begin{equation}
+ Q_u(F)=P_uFP_u-\frac{\tr(P_uFP_u)}{2}P_u.
+ \label{eq:ttrt}
+\end{equation}
+The TTRT integrates this quantity~\cite{szotten2006,lionheart2009}.
+The divisor is the transverse dimension, two, not the ambient dimension
+three. Isotropic fields are invisible: $Q_u(\phi I)=0$.
+``Truncated'' in this usage concerns the transverse trace; it does not
+mean a spatially truncated field of view. The current API implements the
+full TRT, not a separate TTRT class. A future adapter can apply $Q_u$ to
+the full TRT output and use the same self-adjoint projection in its
+backward map. This guide does not introduce unpublished Fourier inversion
+formulas or equate three-axis data with complete directional data.
+
+\subsection{Ordered transport and non-Abelian models}
+\label{sec:transport}
+Suppose a matrix propagator satisfies
+\begin{equation}
+ \frac{\dd U}{\dd s}=G(x(s),u)U(s),\qquad U(s_{\mathrm{entry}})=I,
+\end{equation}
+where $s$ is physical arclength. With constant generator $G_j$ in the
+$j$th encountered voxel and interval length $\ell_j$,
+\begin{equation}
+ U_{\mathrm{exit}}=
+ e^{\ell_q G_q}\cdots e^{\ell_2 G_2}e^{\ell_1 G_1}.
+ \label{eq:product}
+\end{equation}
+The latest factor is leftmost for this ODE convention. In general this is
+not $\exp(\sum_j\ell_jG_j)$. The geometric traversal is exact for the
+specified cells; matrix-exponential evaluation has numerical error, and
+approximating a smooth field by voxel constants has model error.
+
+The example \code{examples/nonabelian_transport.py} implements this product
+with SciPy matrix exponentials. It is a generic forward-model building
+block, not a complete neutron or optical instrument model. For variable
+within-voxel coefficients, recover the physical entry/exit points from
+\eqref{eq:segment} and use an ODE solver on each interval. A connection
+uses a direction-dependent generator: reversal changes both traversal
+order and the contracted generator sign. Reversing endpoints alone for an
+orientation-independent $G(x)$ does not generally produce inverse transport.
+
+The forward map in~\eqref{eq:product} is nonlinear in the generators. Its
+linearisation contains products before and after each perturbation; the
+scalar backprojector is not automatically its Jacobian adjoint. That
+derivative and its tests belong in any future nonlinear reconstruction
+implementation. This separation follows the physical motivation of the
+polarimetric-neutron work without claiming to reproduce its full inversion.
+
+\section{Interfaces and worked use}
+\label{sec:examples}
+\subsection{Python: paths, sparse matrices and matrix-free projection}
+From a checkout with a C++ compiler and Python 3.10 or newer:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=bash]
+python -m pip install '.[scipy]'
+\end{lstlisting}
+\end{minipage}\par
+NumPy is the mandatory runtime dependency. SciPy is needed for sparse
+matrices, tensor operators, iterative solves and the matrix-exponential
+example. The following is a complete small scalar example:
+\par\noindent\begin{minipage}{\linewidth}
+\lstinputlisting[language=Python]{snippets/scalar.py}
+\end{minipage}\par
+It prints indices $0,1,2$, three unit lengths, and the scalar projection
+$3$. The scalar API uses real double-precision arrays. Complex generators
+can be used in the Python transport example, but the scalar and tensor
+projector APIs do not currently accept complex image data.
+
+\Needspace{22\baselineskip}
+\subsection{Python: a tensor with a known transverse trace}
+The following uses $f=\phi I$ on a small 3D grid. It checks the trace
+identity without constructing a full tensor system matrix:
+\par\noindent\begin{minipage}{\linewidth}
+\lstinputlisting[language=Python]{snippets/trt_trace.py}
+\end{minipage}\par
+For more varied fields, \code{examples/tensor_trt.py} uses a spatial mask
+and an anisotropic tensor, checks transversality and the adjoint identity,
+and can reconstruct with CIL. \code{examples/tensor_lrt.py} demonstrates
+the longitudinal operator and its rank-dependent packing.
+
+\subsection{MATLAB and compatibility with older scripts}
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=Matlab]
+addpath('matlab');
+build_jacobsrays;
+test_jacobsrays;
+test_trt;
+p = jacobsrays([3 2], [-1 .5], [4 .5]);
+A = jacobsrays_matrix(p);
+x = ones(3,2);
+y = A*x(:);
+xadj = reshape(A'*y, [3 2]);
+k = p.offsets(1):p.offsets(2)-1;
+disp([p.indices(k), p.lengths(k)]);
+\end{lstlisting}
+\end{minipage}\par
+The MEX layer uses the same C++ header. Inputs are full real double arrays;
+the path indices and offsets returned to MATLAB are one based.
+\code{jacobsrays_matrix} preserves empty rows and the requested full shape,
+including a zero-ray matrix. MATLAB's sparse transpose supplies the matched
+scalar adjoint.
+
+For rank-two TRT, \code{jacobsrays_trt_matrix} explicitly builds the block
+sparse matrix $T$. With voxel components stored as an $N\times c$ matrix
+$F$, and ray components as an $R\times c$ matrix $Y$, use
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=Matlab]
+[T, paths] = jacobsrays_trt_matrix(shape, starts, ends, spacing, origin);
+Y = reshape(T*F(:), size(starts,1), size(F,2));
+Fadj = reshape(T'*Y(:), prod(shape), size(F,2));
+\end{lstlisting}
+\end{minipage}\par
+Here $c=6$ in 3D and $c=3$ in 2D, with the orthonormal components already
+packed. MATLAB vectorisation is component-major in both spaces; Python's
+TRT output is an $R\times c$ C-order array. Do not transfer flattened
+tensor arrays between languages without respecting this distinction.
+The explicit 3D tensor matrix can have up to 36 entries per scalar
+intersection, so it is intended for modest problems. A complete runnable
+MATLAB example is \code{matlab/example_trt.m}.
+
+The compatibility function \code{mod_jacobs_ray3d_multiple} preserves the
+old signature, including ordered \code{'internal'} triples. Its offset
+means the lower grid corner, matching the legacy implementation rather
+than the contradictory old help text. Put the new MATLAB directory first
+on the search path and check geometry conventions when porting scripts.
+
+\subsection{CIL solvers}
+CIL is installed separately using its own instructions~\cite{cildocs}.
+The adapter provides \code{direct}, \code{adjoint} and optional \code{out}
+arguments. Scalar \code{JacobProjector} maps a single-channel
+\code{ImageGeometry} to a \code{VectorGeometry} with one entry per supplied
+ray. It currently requires the default spatial dimension labels and no
+singleton spatial dimensions. It does not infer rays from a CIL
+\code{AcquisitionGeometry}.
+
+With an image geometry \code{ig}, explicit endpoints and compatible data,
+the central CGLS calls are:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=Python]
+from cil.optimisation.algorithms import CGLS
+from jacobsrays.cil import JacobProjector
+operator = JacobProjector(ig, starts, ends)
+solver = CGLS(initial=ig.allocate(0, dtype=np.float64),
+              operator=operator, data=data)
+solver.run(30, verbose=0)
+image = solver.solution
+\end{lstlisting}
+\end{minipage}\par
+\code{examples/cil_cgls.py} supplies the complete geometry and data setup.
+Its recorded noiseless demonstration reached a relative data residual of
+about $1.68\times10^{-4}$ after 30 iterations. This is an example outcome,
+not a general convergence guarantee or a recommended stopping rule for
+noisy measurements.
+
+\code{TensorJacobProjector} has a block-image domain and a scalar-vector
+range. The TRT adapter, \code{TransverseJacobProjector}, uses component
+blocks in both domain and range. Run
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=bash]
+python examples/cil_cgls.py
+python examples/tensor_lrt.py
+python examples/tensor_trt.py --cil
+python examples/nonabelian_transport.py
+\end{lstlisting}
+\end{minipage}\par
+The CIL adapter is imported only when requested. Tensor operators use
+cached scalar matrices; they do not route their adjoints through the
+native atomic scalar implementation.
+
+\section{Validation: what has been checked?}
+\label{sec:validation}
+Validation is layered because a dot-product test alone can pass for a
+consistently wrong forward model. Conversely, comparing two legitimate
+but different discretisations need not give roundoff-level agreement.
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}p{.22\linewidth}YY@{}}
+\toprule
+Layer & Evidence & Main limitation \\
+\midrule
+Traversal & 4,000 random 2D/3D segments against an independent plane-enumeration
+oracle; hand cases and edge cases & Finite sampling of floating-point inputs \\
+Operator algebra & Sparse versus matrix-free results; transpose dot products;
+LRT ranks 0--3 and TRT component checks & Shared geometry can hide common errors \\
+Tensor physics & Independent per-voxel clipping and tensor formula;
+transversality, isotropic and trace identities & Tests the stated model, not every instrument \\
+External scalar code & ASTRA CPU line matrices, projections and adjoints;
+CIL/ASTRA geometry integration & 2D, square pixels, single precision reference \\
+Continuum example & Analytic Gaussian line integrals and separate numerical
+quadrature; slice reconstruction & Specific phantom and fixed acquisition \\
+Language bindings & C++ tests, Python tests, MATLAB MEX tests in CI & No claim of all compilers/platforms \\
+\bottomrule
+\end{tabularx}
+\caption{Different checks answer different questions. Exact geometry,
+adjointness, physical modelling and inverse-problem accuracy are distinct.}
+\end{table}
+
+\subsection{Geometry and adjoint tests}
+The Python reference oracle enumerates plane intersections and sorts them;
+it does not reuse the streaming walk. Cases include anisotropic spacing,
+offset origins, non-cubic grids, reversed and partial rays, simultaneous
+crossings, parallel rays on boundaries, misses, tangencies, empty batches,
+zero-length segments and invalid inputs. C++ tests exercise the standalone
+header. Address and undefined-behaviour sanitizer checks have also been
+used during development; this is not a claim of exhaustive verification.
+
+For real arrays the adjoint identity is
+$\langle Ax,y\rangle=\langle x,A^\mathsf{T}y\rangle$. A useful diagnostic is
+\begin{equation}
+ \varepsilon_{\rm adj}=
+ \frac{|\langle Ax,y\rangle-\langle x,A^\mathsf{T}y\rangle|}
+ {\lVert Ax\rVert\lVert y\rVert+\lVert x\rVert\lVert A^\mathsf{T}y\rVert},
+ \label{eq:adjtest}
+\end{equation}
+with zero treated separately when the denominator vanishes. This avoids
+dividing only by a dot product that may nearly cancel. Tests also compare
+against explicit sparse products. TRT tests use arbitrary tensor data in
+the adjoint, so an incorrect assumption that all input data are already
+transverse is detectable.
+
+The atomic extension adds high-contention tests: 16,384 identical rays
+accumulate into the same four voxels using exactly representable unit
+lengths and small integer data. Random anisotropic 2D/3D cases compare
+serial, atomic and sparse results; CIL tests exercise \code{out} and CGLS.
+At the tested PR revision the OpenMP suite had 29 passing tests; the serial
+build had 25 passes and four OpenMP-only skips. Counts are a dated snapshot,
+not a coverage metric. MATLAB tests run separately on GitHub Actions; no
+local MATLAB installation was used to build this document.
+
+\subsection{Independent comparison with ASTRA}
+\label{sec:astra}
+The external tests use ASTRA 2.5.0 CPU \code{line} and \code{line_fanflat}
+projectors. The direct comparison includes six geometries, each with 29
+angles and 41 detector samples, for 7,134 rays in total. Images have
+$11\times8$ pixels, with square-pixel widths 1, 0.375 and 2.5 and shifted
+windows. Full system matrices are compared before forward and transpose
+products. ASTRA's row ordering and this package's physical $y$ convention
+are reconciled explicitly; an asymmetric image helps expose accidental
+flips. Separate CIL/ASTRA tests cover parallel and fan geometries,
+detector orientation and angular offsets.
+
+ASTRA's reference values are single precision; our traversal uses doubles.
+The coefficient tolerance is $3\times10^{-4}$ times pixel width, with
+relative $L^2$ tolerance $2\times10^{-5}$ for the corresponding projection
+checks. The recorded worst coefficient discrepancy was approximately
+$1.79\times10^{-4}$ pixel widths; forward and adjoint discrepancies were
+of order $10^{-6}$ to $10^{-5}$. These tolerances apply to these tests,
+not a bound for all geometries.
+
+This comparison does not validate 3D external projectors, tensor
+contractions, travel order, or GPU interpolation kernels. Non-square
+pixels are excluded from the ASTRA CPU line reference comparison;
+anisotropic geometry is instead checked by the independent internal oracle.
+TIGRE is discussed as a relevant toolbox but has not yet been used as a
+validation or timing reference in this repository.
+
+\subsection{Slice-by-slice TRT: discrete consistency and continuum error}
+\label{sec:slices}
+If a ray lies in an $x_3$-constant plane, then $u_3=0$ and $P_ue_3=e_3$.
+It follows for any symmetric field that
+\begin{equation}
+ (Jf)_{33}(r)=\int_r f_{33}(x)\dd s.
+\end{equation}
+Thus a scalar 2D reconstruction can recover this component on the plane
+from these TRT data, subject to the usual sampling and inversion issues.
+Choosing voxel-centre planes avoids inter-slice interpolation.
+
+\code{examples/trt_slices.py} uses only the published $f_{33}$ component
+from Table 1 of \citet{desai2016}. On $[-1,1)^3$ it is
+\begin{align}
+ f_{33}(x)={}&e^{-50\lVert x-(.5,-.5,-.5)\rVert^2}
+              -e^{-50\lVert x-(.5,-.5,.5)\rVert^2}\nonumber\\
+            &+e^{-50\lVert x-(.5,.5,.5)\rVert^2},
+\end{align}
+and is zero outside; the other tensor components are set to zero here.
+This example does not reproduce the paper's full tensor phantom or
+three-axis inversion algorithm.
+
+Two layers centred at $x_3=\pm0.5$ contain $n\times n$ centre samples.
+The default acquisition uses 90 angles over a half-turn with angular
+offset 0.013 radians, and 129 detector offsets from $-1.45$ to $1.45$.
+Three data sets are compared: the $33$ output of the voxel TRT, a separate
+2D scalar projection of the samples, and analytic integrals of the
+continuous Gaussian sum clipped to the cube and finite segments. The last
+use error functions and are independently checked against adaptive
+quadrature.
+
+Each data set is inverted with the same scalar matrix and unregularised
+LSMR, tolerances \code{atol=btol=1e-10} and at most 300 iterations. The
+reference is the sampled continuous field, not voxel averages.
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}rccc@{}}
+\toprule
+Slice grid & Voxel/analytic data error & \multicolumn{2}{c}{Image error from analytic data}\\
+ & relative $L^2$ & $x_3=-0.5$ & $x_3=+0.5$ \\
+\midrule
+$32\times32$ & 4.13\% & 2.79\% & 2.77\% \\
+$64\times64$ & 1.48\% & 4.62\% & 5.32\% \\
+\bottomrule
+\end{tabular}
+\caption{Recorded slice example (NumPy 2.3.5, SciPy 1.17.0).
+Smaller forward modelling error does not imply a smaller unregularised
+reconstruction error when acquisition sampling is held fixed.}
+\end{table}
+
+TRT and scalar voxel data agreed exactly in that run, as did their
+reconstructions. Matched voxel-data image errors were approximately
+$2\times10^{-9}$ and $2\times10^{-8}$ at the two resolutions. This is a
+discrete consistency check, often called an inverse crime, rather than
+independent evidence of continuum reconstruction accuracy. All default
+solves stopped on tolerance before the iteration limit.
+
+The analytic-data image errors increase under this refinement even though
+the data discrepancy decreases. Fixed acquisition sampling, conditioning
+and model mismatch can all affect the inverse result; this experiment does
+not isolate them. Regularisation and controlled refinement of both image
+and acquisition are needed for a convergence study. The small CI regression
+therefore tests identities and solver consistency rather than imposing a
+false monotonic error requirement.
+
+\section{Speed, memory and parallel accumulation}
+\label{sec:speed}
+\subsection{Recorded scalar benchmark}
+The recorded 26 October 2026 benchmark used Linux, an AMD EPYC 9V74 CPU,
+GCC 13.3.0, Python 3.12.14 and NumPy 2.3.5. There were 20,000 segments on a
+$64^3$ grid and 2,107,166 intersections. Times below are the best of five
+warm repetitions and include per-call validation and output allocation.
+CSR timings exclude construction of the matrix.
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Operation & Serial build (ms) & OpenMP, 4 threads (ms) \\
+\midrule
+Ordered paths, two passes & 46.42 & 9.90 \\
+Matrix-free forward & 23.33 & 5.48 \\
+Matrix-free adjoint, serial accumulation & 24.45 & 24.48 \\
+Cached CSR forward & 1.63 & 1.62 \\
+Cached CSR transpose & 1.94 & 2.08 \\
+\bottomrule
+\end{tabular}
+\caption{Scalar benchmark before the atomic extension. The CSR operations
+use SciPy and do not acquire a four-thread traversal merely because the
+native extension was built with OpenMP.}
+\end{table}
+The ordered arrays occupied 67,589,320 bytes; the SciPy CSR matrix occupied
+25,365,996 bytes in that run, including its 32-bit index arrays. CSR is
+smaller because it omits the interval endpoints and uses narrower indices
+for this problem. It also amortises geometry over repeated iterations.
+The matrix-free method is useful when storage or changing ray geometry
+makes caching undesirable.
+
+A separate one-pass native comparison used 200,000 rays with
+21,068,823 intersections. The legacy C traversal took 137.70 ms and the new
+C++ traversal 164.20 ms, approximately 19\% longer. Intersection counts
+and the recorded length checksum agreed for that geometry. This test
+excludes wrappers and two-pass path allocation. It shows that the rewrite
+is not intrinsically faster in serial: validation, robust indexing and
+floating-point choices have costs. It is not evidence of a general C
+versus C++ language advantage. Whole-workflow memory, caching and
+parallelism matter more than a language label.
+
+These results are stored in
+\repo{benchmarks/results_2026-10-26.json}{benchmarks/results_2026-10-26.json}.
+They are observations on one shared environment, not universal speed
+claims. No speed comparison with ASTRA, TIGRE or a GPU has been measured.
+
+\subsection{Why the parallel adjoint is harder}
+Forward projection parallelises over rays: each worker reads image values
+and writes its own ray output. The transpose scatters contributions into
+the image. Multiple rays can update the same voxel simultaneously, and an
+unsynchronised read--modify--write can lose updates.
+
+Three common approaches are atomic additions to one image, private images
+per thread followed by reduction, and a decomposition that assigns output
+regions to workers. Atomics save replicated image memory but contend for
+popular voxels and cache lines. Private images cost roughly one image per
+thread plus reduction work. Spatial decompositions require additional
+indexing or ray work. This is a shared-memory OpenMP issue; MPI is not used
+by the current library.
+
+\subsection{Optional OpenMP atomic scalar adjoint}
+\label{sec:atomic}
+At revision \code{f6464f3}, the opt-in native scalar backprojector uses an
+OpenMP atomic addition for each intersection. It writes one shared image;
+it does not allocate a complete image per thread. The default remains
+serial accumulation with fixed ray order. Atomic mode preserves the same
+coefficients in~\eqref{eq:transpose}, but summation order can change with
+scheduling, so the output need not be bitwise reproducible.
+
+Use a fresh checkout or remove the generated build
+directory when changing compiler flags, then build and select the mode:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=bash]
+JACOBSRAYS_OPENMP=1 python -m pip install --no-cache-dir '.[scipy]'
+export OMP_NUM_THREADS=4
+export OMP_DYNAMIC=FALSE
+\end{lstlisting}
+\end{minipage}\par
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=Python]
+A = RayTransform(grid, starts, ends, adjoint_mode="atomic")
+xadj = A.adjoint(data)
+\end{lstlisting}
+\end{minipage}\par
+The same keyword is accepted by scalar \code{JacobProjector}; the SciPy
+operator uses the selected adjoint too. An atomic request in a serial
+build raises an error. Tensor CSR operations and MATLAB sparse products
+are unaffected. A compiler and runtime with OpenMP support are required;
+the environment variables must be set before starting Python.
+
+The 27 October experiment compared serial and atomic adjoints inside each
+fresh process, with 1, 2, 4 or 8 requested threads, fixed geometry/seed,
+one warm-up and five alternating measured repetitions. BLAS thread counts
+were fixed to one. The process had nine CPUs available by affinity. Both
+methods include image allocation and input checking. Median timings are
+used here, so they must not be compared as regressions against the earlier
+minimum timings.
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Ray distribution & Threads & Serial (ms) & Atomic (ms) & Ratio \\
+\midrule
+Distributed & 1 & 30.60 & 22.64 & 1.35 \\
+Distributed & 4 & 28.55 & 9.51 & 3.00 \\
+Distributed & 8 & 27.35 & 6.07 & 4.51 \\
+Through centre & 4 & 30.10 & 12.15 & 2.48 \\
+Through centre & 8 & 31.24 & 9.62 & 3.25 \\
+Identical rays & 4 & 9.51 & 5.04 & 1.89 \\
+Identical rays & 8 & 9.69 & 7.62 & 1.27 \\
+\bottomrule
+\end{tabular}
+\caption{Selected paired medians for 20,000 rays on a $64^3$ grid.
+Ratio is serial time divided by atomic time in the same run. A one-thread
+ratio above one can reflect compiled-loop and timing differences; it is
+not parallel scaling. Full measurements accompany the source.}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.91\linewidth]{figures/atomic-adjoint.pdf}
+\caption{Atomic-adjoint median time versus requested threads, from the
+recorded experiment. Identical rays concentrate writes onto the same
+voxels: eight threads were slower than four for this case. These curves
+describe a single environment and benchmark, not confidence intervals.}
+\end{figure}
+
+The largest observed relative image difference from serial was
+$7.1\times10^{-15}$ and the largest norm-scaled adjoint discrepancy
+\eqref{eq:adjtest} was $1.1\times10^{-17}$. These are measured values,
+not universal roundoff bounds. Geometry-dependent contention explains why
+thread count should be measured rather than simply maximised.
+The source experiment is \code{benchmarks/atomic_adjoint.py}; its recorded
+JSON is \path{benchmarks/atomic_results_2026-10-27.json}. Both were added
+in \atomiclink. Building the guide reads this JSON without rerunning the benchmark.
+
+\section{Reproduction and scope for further work}
+The guide's \code{README.md} gives a LaTeX build command and a script for
+regenerating the figures. The following commands run the existing examples
+and checks from the repository root in a suitable Python environment:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=bash]
+python -m unittest discover -s tests -v
+cmake -S . -B build/cpp
+cmake --build build/cpp
+ctest --test-dir build/cpp --output-on-failure
+python examples/trt_slices.py --json
+python benchmarks/benchmark.py
+# With an OpenMP build:
+python benchmarks/atomic_adjoint.py --threads 1 2 4 8
+\end{lstlisting}
+\end{minipage}\par
+Optional dependency tests may skip if their software is missing; a passing
+minimal installation is not evidence that CIL or ASTRA integration ran.
+The CI configuration provisions these integrations separately and builds
+the MATLAB MEX tests. Benchmarks report observations; they are not timing
+gates on shared CI machines.
+
+Useful next steps include a documented acquisition-geometry converter for
+CIL, a separately tested TTRT adapter, additional external 3D comparisons,
+and memory-controlled tensor operators for problems too large to cache.
+Non-Abelian reconstruction needs physical measurement models and tested
+Jacobian/adjoint pairs. More advanced tensor inversions require their own
+specified data measure and sampling. ORT should receive a public definition
+before an implementation is advertised. These are extensions of a common
+geometric foundation, rather than capabilities implied by the present
+examples.
+
+\clearpage
+\addcontentsline{toc}{section}{References}
+\interlinepenalty=10000
+\bibliographystyle{plainnat}
+\bibliography{references}
+\end{document}
