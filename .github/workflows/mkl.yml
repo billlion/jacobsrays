@@ -1,0 +1,45 @@
+name: Optional oneMKL experiment
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/mkl.yml'
+      - 'benchmarks/mkl_probe.py'
+      - 'benchmarks/test_mkl_probe.py'
+permissions:
+  contents: read
+jobs:
+  sparse-blas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      JACOBSRAYS_OPENMP: '1'
+      OMP_NUM_THREADS: '2'
+      OMP_DYNAMIC: 'FALSE'
+      OMP_WAIT_POLICY: 'PASSIVE'
+      MKL_NUM_THREADS: '2'
+      MKL_DYNAMIC: 'FALSE'
+      MKL_THREADING_LAYER: 'GNU'
+      MKL_INTERFACE_LAYER: 'LP64'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # An explicit venv gives the runtime library a predictable location.
+      # ctypes needs the runtime only: no Intel compiler or header package.
+      - name: Install experimental dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install '.[scipy]' 'numpy==2.3.5' 'scipy==1.17.0' 'mkl==2026.2.0'
+      - name: Check sparse ABI, ownership and empty inputs
+        run: .venv/bin/python -m unittest discover -s benchmarks -p 'test_mkl_probe.py' -v
+      - name: Check tensor adjoints and measure applications
+        run: .venv/bin/python benchmarks/mkl_probe.py --size 64 --rays 20000 --threads 1 2 4 --repeat 9 > mkl-results.json
+      # Correctness is checked, but timings never cause a pass/fail decision.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mkl-results
+          path: mkl-results.json
+          if-no-files-found: error
