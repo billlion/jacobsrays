@@ -118,8 +118,18 @@ class RayTransform:
 
     No intersections are retained. Each application retraces rays. Use
     paths().to_csr() when caching is preferable for repeated solves.
+    adjoint_mode="serial" uses a fixed ray order (the default).
+    adjoint_mode="atomic" requires an OpenMP build and accumulates into one
+    shared image; rounding may vary with thread scheduling. Both are matched
+    transposes. OMP_NUM_THREADS controls the OpenMP team size.
     """
-    def __init__(self, grid, starts, ends):
+    def __init__(self, grid, starts, ends, *, adjoint_mode="serial"):
+        if adjoint_mode not in ("serial", "atomic"):
+            raise ValueError('adjoint_mode must be "serial" or "atomic"')
+        if adjoint_mode == "atomic" and not _native.openmp_enabled:
+            raise RuntimeError("atomic adjoint requires an OpenMP build (JACOBSRAYS_OPENMP=1)")
+        self._backproject = (_native.backproject_atomic if adjoint_mode == "atomic"
+                             else _native.backproject)
         self.grid = grid
         self._starts, self._ends = (a.copy() for a in _rays(grid, starts, ends))
         self._geometry = grid._vectors()
@@ -140,7 +150,7 @@ class RayTransform:
         y = _real(data, "data")
         if y.shape != (self.shape[0],):
             raise ValueError(f"data must have shape {(self.shape[0],)}")
-        return _native.backproject(self._starts, self._ends, *self._geometry, y).reshape(self.grid.image_shape)
+        return self._backproject(self._starts, self._ends, *self._geometry, y).reshape(self.grid.image_shape)
 
     def as_scipy(self):
         from scipy.sparse.linalg import LinearOperator

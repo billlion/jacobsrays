@@ -20,7 +20,13 @@ static bool vector3(const Array& a) {
     return a && PyArray_NDIM(a.get()) == 1 && PyArray_SIZE(a.get()) == 3;
 }
 
-static PyObject* run(PyObject* args, int mode) {
+static PyObject* run(PyObject* args, int mode, bool atomic_adjoint = false) {
+    #ifndef _OPENMP
+    if (atomic_adjoint) {
+        PyErr_SetString(PyExc_RuntimeError,"atomic adjoint requires an OpenMP build (JACOBSRAYS_OPENMP=1)");
+        return nullptr;
+    }
+    #endif
     PyObject *os, *oe, *on, *oh, *oo, *ox = nullptr;
     if (!PyArg_ParseTuple(args, mode ? "OOOOOO" : "OOOOO", &os, &oe, &on, &oh, &oo, &ox)) return nullptr;
     Array s=array(os, NPY_DOUBLE), e=array(oe, NPY_DOUBLE), n=array(on, NPY_INT64),
@@ -66,10 +72,25 @@ static PyObject* run(PyObject* args, int mode) {
                 out[r]=sum;
             }
         } else {
-            // Serial scatter: deterministic, without atomics or one volume/thread.
             std::fill(out,out+g.size(),0.0);
-            for (npy_intp r=0; r<nr; ++r)
-                walk(g,starts+3*r,ends+3*r,[&](index_t i,double l,double,double){out[i]+=l*in[r];});
+            #ifdef _OPENMP
+            if (atomic_adjoint) {
+                // One shared output volume. Every concurrent write is atomic;
+                // the loop's implicit barrier completes updates before return.
+                #pragma omp parallel for schedule(static)
+                for (npy_intp r=0; r<nr; ++r)
+                    walk(g,starts+3*r,ends+3*r,[&](index_t i,double l,double,double){
+                        const double value=l*in[r];
+                        #pragma omp atomic
+                        out[i]+=value;
+                    });
+            } else
+            #endif
+            {
+                // Fixed ray order remains the default, even in OpenMP builds.
+                for (npy_intp r=0; r<nr; ++r)
+                    walk(g,starts+3*r,ends+3*r,[&](index_t i,double l,double,double){out[i]+=l*in[r];});
+            }
         }
         Py_END_ALLOW_THREADS
         return reinterpret_cast<PyObject*>(y.release());
@@ -119,11 +140,26 @@ static PyObject* run(PyObject* args, int mode) {
 static PyObject* trace(PyObject*,PyObject* args) { return run(args,0); }
 static PyObject* project(PyObject*,PyObject* args) { return run(args,1); }
 static PyObject* backproject(PyObject*,PyObject* args) { return run(args,2); }
+static PyObject* backproject_atomic(PyObject*,PyObject* args) { return run(args,2,true); }
 static PyMethodDef methods[] = {
     {"trace",trace,METH_VARARGS,"Ordered batched voxel intersections."},
     {"project",project,METH_VARARGS,"Matrix-free scalar forward operation."},
     {"backproject",backproject,METH_VARARGS,"Matrix-free Euclidean adjoint."},
+    {"backproject_atomic",backproject_atomic,METH_VARARGS,"OpenMP atomic Euclidean adjoint; summation order may vary."},
     {nullptr,nullptr,0,nullptr}
 };
 static PyModuleDef module={PyModuleDef_HEAD_INIT,"_native",nullptr,-1,methods};
-PyMODINIT_FUNC PyInit__native() { import_array(); return PyModule_Create(&module); }
+PyMODINIT_FUNC PyInit__native() {
+    import_array();
+    PyObject* m=PyModule_Create(&module);
+    if (!m) return nullptr;
+    #ifdef _OPENMP
+    const int openmp_enabled=1;
+    #else
+    const int openmp_enabled=0;
+    #endif
+    if (PyModule_AddIntConstant(m,"openmp_enabled",openmp_enabled)<0) {
+        Py_DECREF(m); return nullptr;
+    }
+    return m;
+}

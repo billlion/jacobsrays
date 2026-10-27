@@ -23,21 +23,31 @@ jobs:
       - run: cmake --build build/core --config Release
       - run: ctest --test-dir build/core -C Release --output-on-failure
   openmp:
+    strategy:
+      fail-fast: false
+      matrix:
+        threads: [1, 2, 4]
     runs-on: ubuntu-latest
     env:
       JACOBSRAYS_OPENMP: '1'
-      OMP_NUM_THREADS: '4'
+      OMP_NUM_THREADS: ${{ matrix.threads }}
+      OMP_DYNAMIC: 'FALSE'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
       - run: python -m pip install '.[scipy]'
+      - run: python -c "from jacobsrays import _native; assert _native.openmp_enabled"
       - run: python -m unittest discover -s tests -v
+      - if: matrix.threads == 4
+        run: python benchmarks/atomic_adjoint.py --threads 1 2 4
   cil:
     runs-on: ubuntu-latest
     env:
+      JACOBSRAYS_OPENMP: '1'
       OMP_NUM_THREADS: '2'
+      OMP_DYNAMIC: 'FALSE'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,7 +56,7 @@ jobs:
       # Explicitly pinned to the upstream source used for local validation.
       # ASTRA's CPU line projectors provide an independent reference; no GPU needed.
       - run: python -m pip install '.[scipy]' 'astra-toolbox==2.5.0' 'cil @ git+https://github.com/TomographicImaging/CIL.git@b39f95799bf1af891a896fc4be704986284b593e'
-      - run: python -c "import astra; import cil; print('ASTRA', astra.__version__)"
+      - run: python -c "import astra; import cil; from jacobsrays import _native; assert _native.openmp_enabled; print('ASTRA', astra.__version__)"
       - run: python -m unittest discover -s tests -v
       - run: python examples/cil_cgls.py
       - run: python examples/tensor_trt.py --cil

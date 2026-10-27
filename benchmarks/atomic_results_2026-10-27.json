@@ -1,0 +1,347 @@
+{
+  "date": "2026-10-27",
+  "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+  "python": "3.12.14",
+  "numpy": "2.3.5",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "cpu_count": 9,
+  "affinity_count": 9,
+  "results": [
+    {
+      "case": "distributed",
+      "requested_threads": 1,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.027899091999643133,
+          "median_seconds": 0.030600309999499586
+        },
+        "atomic": {
+          "minimum_seconds": 0.021667138000339037,
+          "median_seconds": 0.022638586000539362
+        },
+        "forward": {
+          "minimum_seconds": 0.01790098499986925,
+          "median_seconds": 0.0181975630002853
+        }
+      },
+      "median_speedup": 1.351688219342433,
+      "max_relative_adjoint_difference": 0.0,
+      "max_norm_scaled_dot_error": 9.23372933082529e-18
+    },
+    {
+      "case": "central",
+      "requested_threads": 1,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.030563365000489284,
+          "median_seconds": 0.03126846899976954
+        },
+        "atomic": {
+          "minimum_seconds": 0.024045709000347415,
+          "median_seconds": 0.025868898001135676
+        },
+        "forward": {
+          "minimum_seconds": 0.020009455000035814,
+          "median_seconds": 0.02151902000150585
+        }
+      },
+      "median_speedup": 1.208728295979087,
+      "max_relative_adjoint_difference": 0.0,
+      "max_norm_scaled_dot_error": 5.807360005621388e-18
+    },
+    {
+      "case": "identical",
+      "requested_threads": 1,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.006731162000505719,
+          "median_seconds": 0.006909835999977076
+        },
+        "atomic": {
+          "minimum_seconds": 0.006528873000206659,
+          "median_seconds": 0.0068577499987441115
+        },
+        "forward": {
+          "minimum_seconds": 0.004628329999832204,
+          "median_seconds": 0.005353033000574214
+        }
+      },
+      "median_speedup": 1.0075952026892936,
+      "max_relative_adjoint_difference": 0.0,
+      "max_norm_scaled_dot_error": 7.777384363238461e-18
+    },
+    {
+      "case": "distributed",
+      "requested_threads": 2,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.027553280000574887,
+          "median_seconds": 0.028219371000886895
+        },
+        "atomic": {
+          "minimum_seconds": 0.013934733999121818,
+          "median_seconds": 0.014698994998980197
+        },
+        "forward": {
+          "minimum_seconds": 0.011457867998615257,
+          "median_seconds": 0.011603474000366987
+        }
+      },
+      "median_speedup": 1.9198163549851353,
+      "max_relative_adjoint_difference": 1.5348791526498117e-16,
+      "max_norm_scaled_dot_error": 8.022748434979351e-18
+    },
+    {
+      "case": "central",
+      "requested_threads": 2,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.029302168999493006,
+          "median_seconds": 0.030761698999413056
+        },
+        "atomic": {
+          "minimum_seconds": 0.016065187999629416,
+          "median_seconds": 0.01774547399872972
+        },
+        "forward": {
+          "minimum_seconds": 0.012696541998593602,
+          "median_seconds": 0.013041862999671139
+        }
+      },
+      "median_speedup": 1.7334954818121555,
+      "max_relative_adjoint_difference": 6.931975303405093e-16,
+      "max_norm_scaled_dot_error": 5.581099226181594e-18
+    },
+    {
+      "case": "identical",
+      "requested_threads": 2,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.0072037019999697804,
+          "median_seconds": 0.0073499680001987144
+        },
+        "atomic": {
+          "minimum_seconds": 0.005537795999771333,
+          "median_seconds": 0.005696721000276739
+        },
+        "forward": {
+          "minimum_seconds": 0.0025360130002809456,
+          "median_seconds": 0.0026479190000827657
+        }
+      },
+      "median_speedup": 1.2902102805880196,
+      "max_relative_adjoint_difference": 5.322499001657759e-15,
+      "max_norm_scaled_dot_error": 1.0657897090363805e-17
+    },
+    {
+      "case": "distributed",
+      "requested_threads": 4,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.027188931999262422,
+          "median_seconds": 0.02855537300092692
+        },
+        "atomic": {
+          "minimum_seconds": 0.009226374999343534,
+          "median_seconds": 0.009505669000645867
+        },
+        "forward": {
+          "minimum_seconds": 0.005964126999970176,
+          "median_seconds": 0.006214318000274943
+        }
+      },
+      "median_speedup": 3.0040361177089916,
+      "max_relative_adjoint_difference": 1.6576954972586459e-16,
+      "max_norm_scaled_dot_error": 8.325493658940836e-18
+    },
+    {
+      "case": "central",
+      "requested_threads": 4,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.029605036999782897,
+          "median_seconds": 0.030101532000117004
+        },
+        "atomic": {
+          "minimum_seconds": 0.011800556001617224,
+          "median_seconds": 0.012147749999712687
+        },
+        "forward": {
+          "minimum_seconds": 0.006980051000937237,
+          "median_seconds": 0.007322027000554954
+        }
+      },
+      "median_speedup": 2.477951225603832,
+      "max_relative_adjoint_difference": 8.654790227344359e-16,
+      "max_norm_scaled_dot_error": 4.9023168878622104e-18
+    },
+    {
+      "case": "identical",
+      "requested_threads": 4,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.007973341000251821,
+          "median_seconds": 0.009510095000223373
+        },
+        "atomic": {
+          "minimum_seconds": 0.0038618359994870843,
+          "median_seconds": 0.00503990499964857
+        },
+        "forward": {
+          "minimum_seconds": 0.0013465430001815548,
+          "median_seconds": 0.0016970019987638807
+        }
+      },
+      "median_speedup": 1.8869591789699423,
+      "max_relative_adjoint_difference": 5.366234161856933e-15,
+      "max_norm_scaled_dot_error": 6.9132305451008705e-18
+    },
+    {
+      "case": "distributed",
+      "requested_threads": 8,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.026614221000272664,
+          "median_seconds": 0.027348407998943003
+        },
+        "atomic": {
+          "minimum_seconds": 0.005866662000698852,
+          "median_seconds": 0.006068140999559546
+        },
+        "forward": {
+          "minimum_seconds": 0.0035064389994658995,
+          "median_seconds": 0.0035600989995145937
+        }
+      },
+      "median_speedup": 4.506884068931173,
+      "max_relative_adjoint_difference": 1.6826445601900637e-16,
+      "max_norm_scaled_dot_error": 9.839219778748259e-18
+    },
+    {
+      "case": "central",
+      "requested_threads": 8,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.029582784000012907,
+          "median_seconds": 0.031238355000823503
+        },
+        "atomic": {
+          "minimum_seconds": 0.007808366000972455,
+          "median_seconds": 0.009621991001040442
+        },
+        "forward": {
+          "minimum_seconds": 0.0043907090002903715,
+          "median_seconds": 0.005097666000438039
+        }
+      },
+      "median_speedup": 3.2465583263843882,
+      "max_relative_adjoint_difference": 9.23415481844283e-16,
+      "max_norm_scaled_dot_error": 3.544752211223445e-18
+    },
+    {
+      "case": "identical",
+      "requested_threads": 8,
+      "rays": 20000,
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "repeat": 5,
+      "timings": {
+        "serial": {
+          "minimum_seconds": 0.009578086001056363,
+          "median_seconds": 0.009692405999885523
+        },
+        "atomic": {
+          "minimum_seconds": 0.007229970999105717,
+          "median_seconds": 0.007619918000273174
+        },
+        "forward": {
+          "minimum_seconds": 0.0013202139998611528,
+          "median_seconds": 0.0018857410013879417
+        }
+      },
+      "median_speedup": 1.2719829792837731,
+      "max_relative_adjoint_difference": 7.0537741693439425e-15,
+      "max_norm_scaled_dot_error": 4.320769090688044e-18
+    }
+  ]
+}

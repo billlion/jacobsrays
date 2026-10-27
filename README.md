@@ -123,19 +123,37 @@ intersections altogether; MATLAB uses cached sparse matrices. All adjoints
 are **Euclidean discrete transposes**, without voxel-volume/data quadrature
 weights. Supply such weights explicitly when approximating other inner products.
 
-Optional OpenMP parallelizes Python tracing and scalar forward projection:
+Optional OpenMP parallelizes Python tracing and scalar forward projection,
+and enables an opt-in atomic scalar adjoint:
 
 ```sh
 JACOBSRAYS_OPENMP=1 python -m pip install --no-cache-dir '.[scipy]'
+export OMP_NUM_THREADS=4
 python -m unittest discover -s tests -v
 python benchmarks/benchmark.py
+python benchmarks/atomic_adjoint.py --threads 1 2 4
 cmake -S . -B build && cmake --build build && ctest --test-dir build
 ```
 
 Use a compiler with OpenMP support (on macOS, install/configure libomp first).
-The default build is serial. Backprojection deliberately uses deterministic
-serial accumulation; it does not allocate a full image per thread. Chunk ray
-batches when path storage would be too large. See [the performance notes](docs/performance.md).
+Use a fresh checkout, or clear the generated `build/` directory, when changing
+OpenMP compiler flags; `--no-cache-dir` alone does not clear local build files.
+The default build is serial. In an OpenMP build, choose the adjoint explicitly:
+
+```python
+A = RayTransform(grid, starts, ends, adjoint_mode="atomic")
+backprojection = A.adjoint(data)
+```
+
+The default `adjoint_mode="serial"` keeps a fixed summation order. Atomic mode
+uses one shared output image and prevents lost updates, but floating-point
+rounding can vary with thread scheduling. Both modes implement the matched
+Euclidean transpose. Atomic mode requires an OpenMP build and raises an error
+otherwise. Speed depends on geometry, contention and thread count.
+The scalar CIL `JacobProjector` accepts the same keyword; `as_scipy()` also
+uses the selected mode. Cached tensor operators and MATLAB sparse operations
+are unaffected. Chunk ray batches when path storage would be too large.
+See [the performance notes](docs/performance.md#optional-atomic-adjoint).
 
 The CI integration job also compares 2D scalar projections against ASTRA's
 independent CPU line projectors, directly and through CIL. It checks full
