@@ -4,5 +4,8 @@ recursive-include src *.cpp
 recursive-include matlab *.m *.cpp
 recursive-include tests *.py *.cpp
 recursive-include docs *.md
+recursive-include docs/paper *.tex *.bib *.pdf *.py *.json Makefile
+prune docs/paper/_build
+prune docs/paper/qa
 recursive-include examples *.py
 recursive-include benchmarks *.py *.cpp *.json
