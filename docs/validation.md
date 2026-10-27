@@ -46,14 +46,26 @@ NumPy 2.3.5, SciPy 1.17.0.
   analytic finite-segment Gaussian integrals are checked against adaptive
   quadrature, including clipping, axis-parallel rays, misses and reversal.
 
-The full local Python suite contains 24 test methods: 11 core/transport,
-four TRT, two slice-example, three CIL integration, three native ASTRA comparison, and one CIL/ASTRA
-comparison. Tests for optional packages are explicitly skipped when those
-packages are absent; the `cil` CI job installs both pinned references and
-runs all 24 methods and the full slice example.
-The GitHub workflow adds Windows/macOS builds, Python 3.10 with OpenMP,
-an integration job pinned to the tested CIL source, and a MATLAB job that
-builds the MEX gateway and runs `test_jacobsrays`, `test_trt` and `example_trt`.
+On 2026-10-27, the optional OpenMP atomic scalar adjoint was checked with
+1, 2, 4 and 8 threads. New tests cover 16,384 identical rays accumulating
+exactly representable integer contributions into four shared voxels, signed
+random 2D/3D projections on anisotropic grids against the sparse transpose,
+dot-product identities, empty/missing/degenerate rays, SciPy `rmatvec`, and
+the scalar CIL adapter's `out` handling and CGLS. Serial builds reject an
+atomic request explicitly. The full suite passed in both builds: all 29
+methods in the OpenMP build, and 25 with four OpenMP-only skips in the serial
+build. See [the atomic benchmarks](performance.md#optional-atomic-adjoint).
+
+The full local Python suite contains 29 test methods: 11 core/transport,
+four TRT, two slice-example, three CIL integration, three native ASTRA
+comparison, one CIL/ASTRA comparison, and five atomic-adjoint methods.
+Tests for optional packages are explicitly skipped when those packages
+are absent; the `cil` CI job installs both pinned references and
+runs all 29 methods in an OpenMP build and the full slice example.
+The GitHub workflow adds Windows/macOS serial builds, Python 3.10 with OpenMP
+at 1/2/4 threads, an integration job pinned to the tested CIL source, and a
+MATLAB job that builds the MEX gateway and runs `test_jacobsrays`, `test_trt`
+and `example_trt`.
 The new TRT MATLAB tests include independent voxel clipping, packed tensor
 normalization, adjoint/reversal and empty/miss cases. Remote CI results must be
 assessed separately from the local checks above.

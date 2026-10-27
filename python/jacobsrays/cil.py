@@ -31,10 +31,12 @@ class JacobProjector(LinearOperator):
     Supports single-channel 2D/3D ImageGeometry in default spatial label
     order. No AcquisitionGeometry-to-ray conversion is inferred. Geometry
     is copied and set to float64. Nonlinear transport needs its own Jacobian.
+    adjoint_mode="atomic" opts into the OpenMP scalar adjoint; "serial"
+    preserves the default fixed summation order. See RayTransform.
     """
-    def __init__(self, image_geometry, starts, ends):
+    def __init__(self, image_geometry, starts, ends, *, adjoint_mode="serial"):
         ig, grid = _image_grid(image_geometry)
-        self.projector = RayTransform(grid, starts, ends)
+        self.projector = RayTransform(grid, starts, ends, adjoint_mode=adjoint_mode)
         super().__init__(domain_geometry=ig,
                          range_geometry=VectorGeometry(self.projector.shape[0], dtype=np.float64))
 
