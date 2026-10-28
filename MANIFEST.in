@@ -9,3 +9,4 @@ prune docs/paper/_build
 prune docs/paper/qa
 recursive-include examples *.py
 recursive-include benchmarks *.py *.cpp *.json
+recursive-include benchmarks/csf3 *.slurm
