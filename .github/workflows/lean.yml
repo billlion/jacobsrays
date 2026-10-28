@@ -1,0 +1,45 @@
+name: Lean proofs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'formal/lean/**'
+      - '.github/workflows/lean.yml'
+  pull_request:
+    paths:
+      - 'formal/lean/**'
+      - '.github/workflows/lean.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coordinate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1
+        with:
+          lake-package-directory: formal/lean
+          auto-config: 'false'
+          build: 'false'
+          test: 'false'
+          lint: 'false'
+          use-mathlib-cache: 'false'
+          use-github-cache: 'false'
+      - uses: actions/cache@v4
+        with:
+          path: formal/lean/.lake
+          key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('formal/lean/lean-toolchain', 'formal/lean/lake-manifest.json') }}
+      - name: Download the required Mathlib dependencies
+        working-directory: formal/lean
+        run: lake exe cache get Mathlib.Data.Real.Archimedean Mathlib.Tactic.Linarith Mathlib.Tactic.NormNum Mathlib.Tactic.Ring
+      - name: Check the coordinate proofs
+        working-directory: formal/lean
+        run: lake build --wfail
+      - name: Reject unfinished proofs or additional axioms
+        working-directory: formal/lean
+        run: lake env lean -DwarningAsError=true Audit.lean
