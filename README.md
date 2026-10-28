@@ -164,6 +164,12 @@ An [optional oneMKL experiment](docs/mkl-experiment.md) measures cached scalar,
 LRT and TRT products, including setup and memory costs. Its adapter and CI job
 are separate from the package; MKL is not a required dependency.
 
+A [benchmark-only TIGRE tensor prototype](docs/tigre-experiment.md) explores
+GPU scalar projection wrapped as rank-two LRT/TRT, with a CSF3 batch script.
+It adds no package dependency and retains ordered traversal. GPU results are
+pending; backprojection is checked as an approximate candidate, not assumed
+to be the exact transpose of TIGRE's forward projector.
+
 The CI integration job also compares 2D scalar projections against ASTRA's
 independent CPU line projectors, directly and through CIL. It checks full
 system matrices, forward projections and adjoints without requiring a GPU.
