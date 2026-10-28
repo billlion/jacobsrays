@@ -81,8 +81,16 @@ and memory tradeoffs in Section~\ref{sec:speed}. The limitations accompany
 each experiment so that reproducible consistency checks are not mistaken
 for reconstruction accuracy claims.
 
+Appendix~\ref{app:exact} starts a verification study with a precise
+specification and written exact-arithmetic correctness proof of the
+traversal. It introduces the proof terminology and a worked example;
+it is not yet a machine-checked or floating-point verification.
+
 \clearpage
+\begingroup
+\small
 \tableofcontents
+\endgroup
 \clearpage
 
 \section{Why a small ray--voxel library?}
@@ -1007,6 +1015,10 @@ specified data measure and sampling. ORT should receive a public definition
 before an implementation is advertised. These are extensions of a common
 geometric foundation, rather than capabilities implied by the present
 examples.
+
+\clearpage
+\appendix
+\input{exact-arithmetic}
 
 \clearpage
 \addcontentsline{toc}{section}{References}

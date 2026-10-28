@@ -3,7 +3,7 @@ PYTHON ?= python
 
 all: jacobsrays.pdf
 
-jacobsrays.pdf: jacobsrays.tex references.bib $(wildcard snippets/*.py) $(wildcard figures/*.pdf)
+jacobsrays.pdf: $(wildcard *.tex) references.bib $(wildcard snippets/*.py) $(wildcard figures/*.pdf)
 	latexmk -pdf -Werror -halt-on-error -interaction=nonstopmode -file-line-error -outdir=_build jacobsrays.tex
 	cp _build/jacobsrays.pdf $@
 

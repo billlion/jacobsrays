@@ -10,6 +10,12 @@ adjoints, Python/MATLAB/CIL use, validation, the published Gaussian slice
 example, and measured performance. ORT remains a proposed application
 without an assumed definition or unpublished reconstruction material.
 
+Appendix A, sourced from [exact-arithmetic.tex](exact-arithmetic.tex), gives
+a precise traversal specification and a written exact-arithmetic correctness
+proof, with introductory definitions and a worked example. It is not yet a
+machine-checked Lean proof or a proof of the floating-point C++ implementation.
+The appendix records the source revision used for its algorithm correspondence.
+
 ## Version scope
 
 The documented baseline is main revision
