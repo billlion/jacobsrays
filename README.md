@@ -170,6 +170,14 @@ system matrices, forward projections and adjoints without requiring a GPU.
 See [validation](docs/validation.md#independent-x-ray-comparison) for reproduction,
 coordinate conventions, precision tolerances and the square-pixel scope.
 
+## Formal verification
+
+The optional [Lean 4 project and walkthrough](formal/lean/README.md) prove the
+one-coordinate initial voxel and next-crossing rules in exact real arithmetic,
+including negative motion and stationary coordinates. The proofs are checked
+by a separate GitHub workflow. This first milestone does not yet verify the
+complete traversal or the C++ floating-point implementation.
+
 ## Provenance and references
 
 Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). This implementation was
