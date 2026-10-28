@@ -13,6 +13,11 @@ To read the core algorithm, start with `jacobsrays::walk` in
 [traverse.hpp](include/jacobsrays/traverse.hpp), which includes the Jacobs
 reference, an algorithm overview and the callback contract.
 
+Appendix A of the guide develops a precise specification and a written
+exact-arithmetic correctness proof, with a worked example and an introduction
+to loop invariants. [Proof source](docs/paper/exact-arithmetic.tex).
+This is a first verification step, not yet a machine-checked or floating-point proof.
+
 ```sh
 python -m pip install '.[scipy]'
 ```

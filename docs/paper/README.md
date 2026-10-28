@@ -10,6 +10,12 @@ adjoints, Python/MATLAB/CIL use, validation, the published Gaussian slice
 example, and measured performance. ORT remains a proposed application
 without an assumed definition or unpublished reconstruction material.
 
+Appendix A, sourced from [exact-arithmetic.tex](exact-arithmetic.tex), gives
+a precise traversal specification and a written exact-arithmetic correctness
+proof, with introductory definitions, a notation diagram and a worked example. It is not yet a
+machine-checked Lean proof or a proof of the floating-point C++ implementation.
+The appendix records the source revision used for its algorithm correspondence.
+
 ## Version scope
 
 The documented baseline is main revision
@@ -29,7 +35,7 @@ do not change the supported package API or the baseline revision above.
 ## Build and check
 
 A TeX Live installation with `latexmk`, pdfLaTeX, BibTeX, Latin Modern,
-`natbib`, `listings`, `microtype`, `booktabs`, `tabularx`, `hyperref` and
+`natbib`, `listings`, `microtype`, `booktabs`, `tabularx`, `float`, `hyperref` and
 `bookmark` is sufficient. On Debian/Ubuntu these are available through
 `latexmk`, `lmodern`, `texlive-latex-recommended`, `texlive-latex-extra`
 and `texlive-fonts-recommended`.
@@ -49,7 +55,7 @@ Python listings, and uploads a PDF artifact. Existing numerical CI is
 unchanged. When editing, inspect rendered pages for layout problems as
 well as checking the TeX log.
 
-The two figures are committed so readers can build without Python graphics
+The figures are committed so readers can build without Python graphics
 dependencies. To regenerate them, install NumPy and Matplotlib, then run:
 
 ```sh
@@ -60,7 +66,9 @@ make -C docs/paper
 `make_figures.py` disables variable PDF date metadata. The atomic plot reads
 the recorded JSON in `benchmarks/`; it does not rerun a benchmark or use
 hard-coded plotted measurements. No timings are CI pass/fail thresholds.
-The geometry figure is schematic.
+The ordered-ray geometry figure is schematic. The appendix notation figure
+uses the stated 3-by-2 unit-grid example, with matching physical-space and
+ray-parameter views.
 
 The main scalar benchmark is recorded at
 `benchmarks/results_2026-10-26.json`; the atomic benchmark is recorded at

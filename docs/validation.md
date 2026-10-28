@@ -1,5 +1,12 @@
 # Validation and current limits
 
+Appendix A of the [user and methods guide](paper/jacobsrays.pdf) contains
+a precise specification and a written correctness proof for an exact-arithmetic
+model of the traversal ([source](paper/exact-arithmetic.tex)). It covers clipping,
+boundary ownership, ordered complete traversal, tied crossings and termination.
+It is not a machine-checked proof and does not certify the floating-point C++,
+its validators, the wrappers or parallel accumulation.
+
 Initial local validation: 2026-10-26, Linux x86-64, GCC 13.3, Python 3.12.14,
 NumPy 2.3.5, SciPy 1.17.0.
 

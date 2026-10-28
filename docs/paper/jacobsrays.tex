@@ -6,6 +6,7 @@
 \usepackage[margin=26mm]{geometry}
 \usepackage{amsmath,amssymb,mathtools}
 \usepackage{graphicx,booktabs,tabularx,array}
+\usepackage{float}
 \usepackage{xcolor,listings,enumitem,needspace}
 \usepackage[numbers,sort&compress]{natbib}
 \usepackage{hyperref}
@@ -81,8 +82,16 @@ and memory tradeoffs in Section~\ref{sec:speed}. The limitations accompany
 each experiment so that reproducible consistency checks are not mistaken
 for reconstruction accuracy claims.
 
+Appendix~\ref{app:exact} starts a verification study with a precise
+specification and written exact-arithmetic correctness proof of the
+traversal. It introduces the proof terminology and a worked example;
+it is not yet a machine-checked or floating-point verification.
+
 \clearpage
+\begingroup
+\small
 \tableofcontents
+\endgroup
 \clearpage
 
 \section{Why a small ray--voxel library?}
@@ -1009,6 +1018,11 @@ geometric foundation, rather than capabilities implied by the present
 examples.
 
 \clearpage
+\appendix
+\input{exact-arithmetic}
+
+\clearpage
+\phantomsection
 \addcontentsline{toc}{section}{References}
 \interlinepenalty=10000
 \bibliographystyle{plainnat}

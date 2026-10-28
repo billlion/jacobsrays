@@ -1,0 +1,318 @@
+% SPDX-License-Identifier: Apache-2.0
+\section{Exact-arithmetic specification and correctness}
+\label{app:exact}
+
+This is a first step towards formal verification: a precise specification
+and a written mathematical proof of an exact-arithmetic model of
+\code{walk()}. It is \textbf{not yet a machine-checked proof}, a proof about
+the actual C++ floating-point execution, or a verification of the wrappers.
+The correspondence below was checked against
+\href{https://github.com/billlion/jacobsrays/blob/e1c4313550f86fd49547e7a9cb85f353d04f8a1d/include/jacobsrays/traverse.hpp}{\code{traverse.hpp} at revision \code{e1c4313}}.
+
+A \emph{specification} states what a function must deliver, independently
+of its implementation. A \emph{precondition} is an assumption on its inputs;
+a \emph{postcondition} is a promised property of its output. A \emph{loop
+invariant} is a statement that holds whenever execution reaches the top of
+the loop. Proving an invariant requires establishing it initially and showing
+that every iteration preserves it. Termination needs a separate argument.
+
+\subsection{Inputs and the meaning of an output record}
+\label{app:exact-contract}
+Let $D\in\{2,3\}$ be the dimension. We number coordinates from zero, to
+match the implementation. Throughout this appendix the coordinate index is
+an integer
+\[
+ i\in\{0,1,\ldots,D-1\}\subset\mathbb Z.
+\]
+In 3D, $i=0,1,2$ correspond respectively to the $x,y,z$ directions.
+The grid inputs are:
+\begin{itemize}
+ \item $n_i\in\mathbb Z_{>0}$: the \emph{number of voxels} in direction $i$.
+ Their indices are $0,1,\ldots,n_i-1$. Thus $n_i-1$ is the largest voxel
+ index, not the number of voxels. There are $n_i+1$ grid planes in that
+ direction, numbered $0,1,\ldots,n_i$.
+ \item $h_i\in\mathbb R_{>0}$: the physical width of each voxel in direction $i$.
+ \item $o=(o_0,\ldots,o_{D-1})\in\mathbb R^D$: the lower corner of the grid.
+\end{itemize}
+The ray endpoints are $p,e\in\mathbb R^D$. Define its parametrisation by
+\[
+ r(t)=p+t(e-p),\qquad t\in[0,1]\subset\mathbb R,
+ \qquad L=\|e-p\|_2.
+\]
+Here $r(0)=p$, $r(1)=e$, and $L$ is the physical length of the whole input
+segment, including any portion outside the grid. For each coordinate define
+\[
+ q_i=\frac{p_i-o_i}{h_i},\qquad v_i=\frac{e_i-p_i}{h_i}.
+\]
+Thus $q_i+t v_i$ is the ray coordinate measured in voxel widths from $o_i$.
+
+A voxel is labelled by an \emph{integer vector}
+\[
+ c=(c_0,\ldots,c_{D-1})\in\mathbb Z^D,
+ \qquad c_i\in\{0,1,\ldots,n_i-1\}\quad\text{for every }i.
+\]
+The vector $c$ is an index, not a physical position. Its voxel has lower
+corner with coordinates $o_i+c_i h_i$. The grid and the voxel labelled by
+$c$ are the sets
+\[
+ \Omega=\prod_{i=0}^{D-1}[o_i,o_i+n_i h_i),\qquad
+ V_c=\prod_{i=0}^{D-1}[o_i+c_i h_i,o_i+(c_i+1)h_i).
+\]
+Here $\prod$ denotes the \emph{Cartesian product of sets}. For example,
+$V_{(1,0)}=[1,2)\times[0,1)$ in a 2D unit grid at the origin. These half-open
+boxes partition $\Omega$: a point on an internal face belongs to the
+higher-index voxel in that coordinate. The lower outer faces are included;
+the upper outer faces are excluded.
+
+\begin{figure}[H]
+ \centering
+ \includegraphics[width=\linewidth]{figures/exact-notation.pdf}
+ \caption{Notation for a two-dimensional unit grid: $D=2$, $n=(3,2)$,
+ $h=(1,1)$ and $o=(0,0)$. The ray runs from $p=(-1,-1/2)$ to $e=(4,2)$.
+ The orange portion passes through voxel $c=(1,0)$, with entry parameter
+ $a=2/5$ and exit parameter $b=3/5$. The same portion is marked on the
+ parameter line below. The grid entry and exit are $\alpha=1/5$ and
+ $\beta=4/5$. Solid lower/left and dashed upper/right outer edges indicate
+ the half-open grid boundary.}
+ \label{fig:exact-notation}
+\end{figure}
+
+The \emph{output} is an ordered list of entries, one per positive-length
+voxel intersection. We call one entry an \emph{output record}: ``record''
+is the programming term for a group of related data. In our mathematical
+model it is the tuple
+\[
+ (c,a,b,\ell),\qquad
+ a,b\in\mathbb R,\quad 0\leq a<b\leq1,\quad \ell=(b-a)L,
+\]
+where $c$ identifies the voxel, $a,b$ are its ray entry and exit parameters,
+and $\ell$ is the physical length travelled in it. Thus a record is one
+item in the output, not a separate output. The C++ function reports each
+intersection by calling the supplied function \code{emit}; it does not
+itself construct a list of these tuples. It passes a linear voxel index,
+the length $\ell$, and the entry and exit parameters $a,b$ to \code{emit}.
+The index is $c_0+n_0(c_1+n_1c_2)$ in 3D, or $c_0+n_0c_1$ in 2D.
+
+For an entry $(c,a,b,\ell)$ we require $r(t)\in V_c$ for every
+$a<t<b$. \textbf{We do not require both endpoints $r(a)$ and $r(b)$ to
+belong to $V_c$.} The parameters mark the ends of the portion traversed
+in the voxel. If an endpoint lies on a voxel boundary, its set membership
+is determined by the half-open convention.
+In Figure~\ref{fig:exact-notation}, $r(b)=(2,1)$ does not belong to
+$V_{(1,0)}=[1,2)\times[0,1)$, although $b$ is correctly recorded as its exit
+parameter. It belongs to $V_{(2,1)}$. For a ray travelling in the negative
+$x$ direction across $x=k$, the next interval lies in column $k-1$, although
+the crossing point itself lies in column $k$. These isolated points have
+zero length and do not affect the reported intersection lengths.
+
+\Needspace{21\baselineskip}
+The required postconditions are:
+\begin{enumerate}
+ \item If $L=0$, the output is empty. Otherwise, emit exactly one record for
+ each voxel whose ray intersection has positive length, and no others.
+ \item Each record has $0\leq a<b\leq1$, a valid cell index, and
+ $r(t)\in V_c$ for every $a<t<b$. Its interval is the full positive-length
+ intersection with that voxel, up to endpoints.
+ \item Records occur in increasing parameter order. Consecutive intervals
+ meet at an endpoint; their interiors are disjoint. Together they cover
+ the part of the ray in $\Omega$, apart from finitely many endpoints.
+ \item Each length is exact. In particular, writing $|S|$ for the
+ one-dimensional measure of a parameter set,
+ \[
+   \ell_c=L\,|\{t\in[0,1]:r(t)\in V_c\}|,\qquad
+   \sum_c\ell_c=L\,|\{t\in[0,1]:r(t)\in\Omega\}|.
+ \]
+ \item The algorithm terminates, with at most
+ $1+\sum_i(n_i-1)$ emitted records when the output is nonempty.
+\end{enumerate}
+\subsection{The exact algorithm corresponding to \texorpdfstring{\code{walk()}}{walk()}}
+\label{app:exact-algorithm}
+Replace floating-point arithmetic by exact real arithmetic and fixed-width
+indices by mathematical integers. Interpret \code{fma(first,v,q)} as
+$q+\mathrm{first}\,v$, and the nested \code{hypot} calls as $L$.
+These replacements define the model; their correctness for machine
+arithmetic is \emph{not} assumed to have been proved.
+The C++ core uses three coordinates; the 2D case is represented by adding
+a constant third coordinate inside a layer one voxel thick.
+The supplied function \code{emit} is called a \emph{callback}: the traversal
+calls it once for each intersection. Here its only action is to append a
+record to the output list. Any later proof using an actual callback must
+specify its termination and effects on inputs.
+
+\emph{Clipping} means restricting the ray to the part inside the grid.
+Return immediately if $L=0$. A direction with $v_i=0$ is called stationary:
+the ray does not move in that coordinate. In such a direction, return empty if
+$q_i\notin[0,n_i)$; otherwise it imposes no parameter restriction. For each
+moving direction, the condition $0\leq q_i+t v_i\leq n_i$ restricts $t$
+to a closed interval with endpoints
+$-q_i/v_i$ and $(n_i-q_i)/v_i$. Intersect these intervals with $[0,1]$,
+calling the resulting lower and upper bounds $\alpha$ and $\beta$.
+Return empty if $\alpha\geq\beta$.
+
+Set $t=\alpha$. Write $x_i=q_i+\alpha v_i$ for the entry coordinate in
+voxel units, and initialise
+\[
+ c_i=\begin{cases}
+       \lfloor x_i\rfloor,&v_i\geq0,\\
+       \lceil x_i\rceil-1,&v_i<0,
+     \end{cases}
+ \qquad \sigma_i=\operatorname{sgn}(v_i).
+\]
+The next crossing parameter is
+\[
+ \tau_i=\begin{cases}
+       (c_i+1-q_i)/v_i,&v_i>0,\\
+       (c_i-q_i)/v_i,&v_i<0,\\
+       +\infty,&v_i=0.
+     \end{cases}
+\]
+For a stationary direction there is no next face crossing, so we use
+$+\infty$ to express this. It is larger than every finite crossing parameter
+and cannot be selected instead of the finite endpoint $\beta$ in a minimum.
+A special value used in this way is called a \emph{sentinel} in programming.
+Here $+\infty$ participates only in comparisons; no arithmetic is done with it.
+
+While $t<\beta$, set $s=\min(\beta,\tau_0,\ldots,\tau_{D-1})$,
+emit $(c,t,s,(s-t)L)$, and set $t=s$. If $s=\beta$, finish.
+Otherwise, for \emph{every} axis with $\tau_i=s$, replace $c_i$ by
+$c_i+\sigma_i$ and recompute $\tau_i$ using the formula above.
+
+\Needspace{10\baselineskip}
+The C++ implementation in \code{traverse.hpp} also uses two
+\code{min}/\code{max} operations to restrict values to an allowed range.
+This is called \emph{clamping}: a value below the lower bound is replaced
+by that bound, a value above the upper bound is replaced by the upper bound,
+and a value already in range is unchanged. Here the computed entry coordinate
+is restricted to $[0,n_i]$, and the initial voxel index to $[0,n_i-1]$.
+In exact arithmetic these operations leave both values unchanged.
+Also, the condition \code{stop > t} holds in every entered loop iteration,
+and the early return for an out-of-grid index cannot occur before the final
+endpoint. The proof below establishes these facts; they are not extra
+preconditions.
+
+\subsection{Correctness proof}
+\label{app:exact-proof}
+\textbf{Theorem.} Under the preconditions above, the exact algorithm
+satisfies all five postconditions.
+
+\textbf{1. Clipping.}
+If $v_i=0$, membership in that coordinate slab is constant and is exactly
+the test $0\leq q_i<n_i$. If $v_i\ne0$, the inverse image of the closed
+slab $[0,n_i]$ is the interval computed above. Replacing the actual half-open
+slab by the closed slab changes membership only at its two endpoint
+parameters. Hence, after the stationary-axis tests, the parameter set inside
+the grid differs from the intersection of these closed intervals with
+$[0,1]$ by at most finitely many points. It has positive length exactly when
+$\alpha<\beta$. Every parameter strictly between these bounds lies in
+$\Omega$. The empty returns, including point tangencies, are therefore
+correct. The separately handled $L=0$ case has zero physical length.
+
+\textbf{2. Initialisation.}
+Assume now that $L>0$ and $\alpha<\beta$.
+For $v_i>0$, clipping gives $0\leq x_i<n_i$: equality at the upper end
+would leave no interior interval. Thus $\lfloor x_i\rfloor$ is a valid
+cell, occupied immediately after $\alpha$. For $v_i<0$, similarly
+$0<x_i\leq n_i$, and $\lceil x_i\rceil-1$ is the valid cell occupied
+immediately after $\alpha$. For $v_i=0$, the stationary-axis test gives
+$0\leq x_i<n_i$, and $\lfloor x_i\rfloor$ gives the prescribed voxel assignment.
+Both range-restriction operations in the C++ implementation consequently
+leave these initial values unchanged.
+For a moving axis, $\tau_i$ is strictly larger than $\alpha$ and is its
+first cell-face crossing after $\alpha$.
+
+\Needspace{12\baselineskip}
+\textbf{3. Invariant.}
+At the top of every entered iteration:
+\begin{enumerate}[label=(\roman*)]
+ \item $\alpha\leq t<\beta$, and the records already emitted correctly
+ cover the parameter interval from $\alpha$ to $t$, up to endpoints.
+ \item $c$ is a valid cell occupied immediately after $t$.
+ \item Each moving axis has $\tau_i>t$, its first forward-in-parameter
+ face crossing of this cell; stationary axes have $\tau_i=+\infty$.
+\end{enumerate}
+Here ``immediately after'' means that some $\varepsilon$ with
+$0<\varepsilon\leq\beta-t$ exists such that $r(u)\in V_c$ for every
+$u\in(t,t+\varepsilon)$. Initialisation proves the invariant before
+the first iteration, with an empty output list.
+
+\textbf{4. Preservation and the emitted interval.}
+By (iii), $s>t$. No coordinate crosses a cell face for $t<u<s$, so the
+entire open interval lies in $V_c$. Its physical length is exactly
+$(s-t)L$. Appending it preserves ordered coverage and creates no overlap
+of interiors. This is the maximal remaining interval in that cell:
+at $s$ either the clipped ray ends or at least one coordinate leaves the cell.
+
+If $s<\beta$, at least one moving axis has $\tau_i=s$.
+Each such crossing is of an \emph{internal} plane: an outward crossing of
+the outer box would end the clipped interval at or before $s$, contradicting
+$s<\beta$. Updating every tied axis therefore gives valid indices and the
+cell occupied immediately after $s$. A tied axis's next crossing increases
+by $1/|v_i|>0$; untied axes already have $\tau_i>s$.
+Thus (i)--(iii) hold for the next iteration. Since all $\tau_i\geq s$
+before updating, the C++ test $\tau_i\leq s$ selects exactly the tied axes.
+No record is emitted between the individual axis updates.
+
+\textbf{5. Termination.}
+The nonnegative integer
+\[
+ R(c)=\sum_{i:v_i>0}(n_i-1-c_i)+\sum_{i:v_i<0}c_i
+\]
+counts the internal planes still ahead, whether or not the finite ray will
+reach them. Every nonfinal iteration decreases $R$ by the number of tied
+axes, hence by at least one. This is a \emph{loop variant}: a quantity in
+the nonnegative integers that strictly decreases on each continuation.
+There cannot be infinitely many continuations. Since initially
+$R\leq\sum_i(n_i-1)$, there are at most that many nonfinal iterations
+and one final emission. The last emission ends at $\beta$.
+
+\textbf{6. Completeness and uniqueness.}
+The invariant and termination give contiguous coverage from $\alpha$ to
+$\beta$, up to endpoints. Each moving cell coordinate only changes in its
+fixed direction, and some coordinate changes between consecutive records;
+therefore no cell can be visited twice. Every positive-length voxel
+intersection contains an open parameter interval and so must be represented
+in this coverage. Consequently the emitted records are exactly the required
+intersections. Summing their lengths gives $L(\beta-\alpha)$, which equals
+the length in the grid by the clipping argument. Valid cell coordinates
+also imply a linear index between zero and $\prod_i n_i-1$ in mathematical
+integer arithmetic. This proves all the postconditions.\hfill$\square$
+
+\Needspace{18\baselineskip}
+\subsection{A small example with a simultaneous crossing}
+Return to the $3\times2$ unit grid in Figure~\ref{fig:exact-notation}, with
+$p=(-1,-\tfrac12)$, $e=(4,2)$. Then
+\[
+ r(t)=(-1+5t,-\tfrac12+\tfrac52 t),\quad
+ \alpha=\tfrac15,\quad\beta=\tfrac45,\quad L=\tfrac52\sqrt5.
+\]
+The exact output is
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+Cell $c$ & Linear index & Entry $a$ & Exit $b$ & Length\\
+\midrule
+$(0,0)$ & $0$ & $1/5$ & $2/5$ & $\sqrt5/2$\\
+$(1,0)$ & $1$ & $2/5$ & $3/5$ & $\sqrt5/2$\\
+$(2,1)$ & $5$ & $3/5$ & $4/5$ & $\sqrt5/2$\\
+\bottomrule
+\end{tabular}
+\end{center}
+At $t=3/5$ the ray crosses $x=2$ and $y=1$ simultaneously, so both cell
+coordinates advance. Cells $(2,0)$ and $(1,1)$ receive no positive-length
+interval. The initial variant is $R=2+1=3$; the first crossing reduces it
+to $2$ and the simultaneous crossing reduces it to $0$. The next record
+ends at the grid boundary. Reversing the ray reverses the cell list and
+maps every interval $(a,b)$ to $(1-b,1-a)$, preserving its length.
+
+\subsection{What remains to be formalised}
+The first Lean milestone would be the one-coordinate initialisation and
+next-crossing lemmas, followed by the invariant and termination argument.
+For rational inputs, all crossing parameters are rational; the possibly
+irrational length $L$ can be treated separately. This would verify a formal
+model, which would still need to be connected to the C++ implementation.
+
+The present proof excludes floating-point rounding, overflow/underflow,
+fixed-width indices and casts, validators, library-function accuracy,
+callbacks, wrappers and parallel accumulation. Tests comparing a model with
+C++ would add useful evidence, but would not establish their equivalence
+for all inputs.
