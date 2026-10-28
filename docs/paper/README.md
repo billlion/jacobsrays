@@ -20,6 +20,12 @@ The atomic benchmark was measured on revision
 `f6464f3cb3565c8a2f0021138e96efcd0e7958c0` before that merge.
 The source and recorded JSON are in `benchmarks/`.
 
+The CSF3 subsection additionally reports two 27 October 2026 runs of the
+benchmark-only oneMKL adapter. Their raw JSON, environment, reproduction
+command and provenance limitations are in
+[`benchmarks/csf3/`](../../benchmarks/csf3/README.md). These later measurements
+do not change the supported package API or the baseline revision above.
+
 ## Build and check
 
 A TeX Live installation with `latexmk`, pdfLaTeX, BibTeX, Latin Modern,
@@ -60,3 +66,8 @@ The main scalar benchmark is recorded at
 `benchmarks/results_2026-10-26.json`; the atomic benchmark is recorded at
 `benchmarks/atomic_results_2026-10-27.json`. Slice experiment settings and limitations
 are also described in [../trt_slices.md](../trt_slices.md).
+
+The CSF3 timing table sums the separate forward and adjoint medians from
+the two archived JSON files; it is not a solver-iteration measurement.
+These values are checked against the raw files when editing the table.
+Building the guide does not rerun any cluster benchmark.

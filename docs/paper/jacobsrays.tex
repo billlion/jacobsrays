@@ -35,7 +35,7 @@
 \newcommand{\atomiclink}{\href{https://github.com/billlion/jacobsrays/pull/7}{PR~7}}
 \title{\texttt{jacobsrays}: ordered voxel intersections\\for tensor tomography and transport}
 \author{Project documentation --- user and methods guide}
-\date{Draft, 27 October 2026}
+\date{Draft, 28 October 2026}
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -48,7 +48,8 @@ weights produce matched forward and adjoint operators, and shows why
 ordered intervals are needed for non-commuting matrix transport. We document
 the connection to David Szotten's earlier code, independent validation
 against analytic calculations and ASTRA, and measured CPU performance,
-including an optional OpenMP atomic adjoint. Worked examples distinguish
+including an optional OpenMP atomic adjoint and experimental cached
+oneMKL products. Worked examples distinguish
 discrete consistency from continuum accuracy. This is practical software
 documentation, not a claim of a new ray-tracing algorithm or a general
 solution to tensor or non-Abelian inverse problems.
@@ -58,8 +59,11 @@ solution to tensor or non-Abelian inverse problems.
 The implementation is Apache-2.0 licensed. This draft describes main revision
 \href{https://github.com/billlion/jacobsrays/commit/854c6aa60d64be38619be6d268ceb6b7b56da5f7}{\code{854c6aa}}
 (package version 0.1.0), including the optional atomic adjoint merged in
-\atomiclink. Its recorded measurements were made on revision
+\atomiclink. The atomic-adjoint measurements were made on revision
 \href{https://github.com/billlion/jacobsrays/commit/f6464f3cb3565c8a2f0021138e96efcd0e7958c0}{\code{f6464f3}} before that merge.
+Section~\ref{sec:csf3-mkl} adds later CSF3 measurements of a benchmark-only
+oneMKL adapter; their raw records and provenance limitations are documented
+in \path{benchmarks/csf3/README.md}.
 
 \subsection*{Reading this guide}
 For a first calculation, read the coordinate contract in
@@ -878,6 +882,99 @@ thread count should be measured rather than simply maximised.
 The source experiment is \code{benchmarks/atomic_adjoint.py}; its recorded
 JSON is \path{benchmarks/atomic_results_2026-10-27.json}. Both were added
 in \atomiclink. Building the guide reads this JSON without rerunning the benchmark.
+
+\subsection{Experimental oneMKL acceleration of cached operators on CSF3}
+\label{sec:csf3-mkl}
+
+An additional experiment on 27 October 2026 tested Intel oneMKL Sparse BLAS
+on the University of Manchester CSF3 cluster. The benchmark-only adapter in
+\path{benchmarks/mkl_probe.py} replaces products with a cached scalar CSR
+matrix by oneMKL products, including products with six tensor components.
+The LRT and TRT timings include the surrounding component packing,
+contractions and transverse projections. These measurements concern cached
+operators; they do not measure the matrix-free atomic backprojector or a
+complete iterative reconstruction. The adapter remains experimental and
+does not add a supported MKL backend to the package API.
+
+Both repeated jobs requested 16 CPUs on one node and reported an AMD EPYC
+9634 processor. They used Python 3.12.16, NumPy 2.3.5, SciPy 1.17.0 and
+oneMKL 2026.2.0, with the GNU threading layer, LP64 indices and passive
+OpenMP waiting. Each requested thread count ran in a fresh process;
+dynamic OpenMP/MKL thread adjustment was disabled. The problem comprised
+a $128^3$ grid and 100,000 random segments entering through one $x$-face
+and leaving through the opposite face, with fixed random seed 20261027.
+The scalar matrix had
+21,200,180 nonzeros. This geometry is a performance test, not a claim of
+adequate angular sampling for inversion.
+
+Each product was evaluated before timing for a correctness check, followed
+by nine timed repetitions with rotating and reversing backend order.
+Table~\ref{tab:csf3-mkl} reports the sum of the separate forward and adjoint
+median times. Geometry construction and backend preparation are excluded;
+output allocation and the operator's per-call work are included. The
+SciPy controls comprise the original CSR matrix, sorted CSR, and sorted
+CSR with a separately cached CSR transpose. SciPy sparse products in these
+controls are single-threaded.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}r rrr rrr@{}}
+\toprule
+& \multicolumn{3}{c}{Run A} & \multicolumn{3}{c}{Run B} \\
+\cmidrule(lr){2-4}\cmidrule(l){5-7}
+MKL threads & Scalar & LRT & TRT & Scalar & LRT & TRT \\
+\midrule
+1  & 100.47 & 370.40 & 418.15 & 64.37 & 358.20 & 391.21 \\
+2  &  32.64 & 224.82 & 244.77 & 39.81 & 206.22 & 261.47 \\
+4  &  25.14 & 156.87 & 158.88 & 19.48 & 115.26 & 161.24 \\
+8  &  20.01 &  97.06 & 134.44 & 12.39 &  77.22 & 117.38 \\
+16 &  11.87 &  91.12 & 121.14 & 15.37 &  81.96 & 117.79 \\
+\bottomrule
+\end{tabular}
+\caption{Cached-operator forward-plus-adjoint costs in milliseconds on
+CSF3. Runs A and B are separate submissions of the same job script,
+recorded in \texttt{mkl-23867575.json} and \texttt{mkl-23867786.json}.
+Each entry sums two separate medians; it is not a measured solver iteration.
+The two jobs had different permitted CPU sets. The raw files are archived
+in \texttt{benchmarks/csf3/}.}
+\label{tab:csf3-mkl}
+\end{table}
+
+For the eight-thread comparisons, the SciPy cached-transpose pair costs
+were respectively $(106.26,588.70,625.17)$ ms in run A and
+$(78.62,579.04,616.35)$ ms in run B, in scalar/LRT/TRT order. For the scalar
+case this combines the sorted-CSR forward time with the cached-transpose
+adjoint time. The corresponding gains from eight-thread MKL were
+$5.31$ and $6.34$ for scalar products, $6.07$ and $7.50$ for LRT, and
+$4.65$ and $5.25$ for TRT. These are within-run comparisons with that
+specific single-threaded baseline.
+
+The results support eight threads as a practical choice for this problem
+size. Moving from eight to sixteen reduced LRT and TRT times by about
+6\% and 10\% in run A, but increased them by about 6\% and 0.3\% in run B.
+Thus sixteen threads showed no consistent tensor advantage. Variation
+between jobs and the changed CPU affinity prevent a precise claim about
+parallel efficiency or its hardware cause; these two runs do not establish
+a universal optimum or a statistical confidence interval.
+
+At eight threads, geometry construction took 0.50--0.58 s and additional
+MKL preparation took 0.64--0.69 s. The process resident-memory increase
+across MKL preparation was about 1.05 GiB, while the complete comparison
+benchmark peaked at about 2.85 GiB. These measurements include allocations
+beyond the original CSR matrix and should not be interpreted as the memory
+required by a minimal MKL-only implementation. Charging the full MKL
+preparation cost against the measured savings over the cached-transpose
+baseline gives a break-even of approximately two LRT or TRT
+forward/adjoint pairs; this excludes common geometry construction and
+process/library startup.
+
+Across both jobs the largest relative product discrepancy from SciPy was
+$5.6\times10^{-16}$ or less, and the largest norm-scaled tensor adjoint
+discrepancy was $4.2\times10^{-18}$ or less. This is evidence of agreement
+for these discrete test problems, not of continuum reconstruction accuracy.
+The measured speedups justify further evaluation of an optional cached
+MKL backend, with complete reconstruction time and memory as the next
+validation targets.
 
 \section{Reproduction and scope for further work}
 The guide's \code{README.md} gives a LaTeX build command and a script for
