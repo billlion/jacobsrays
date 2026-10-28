@@ -158,3 +158,16 @@ timings should be interpreted as observations, not stable regression gates.
 - [Sparse matrix/multiple-vector multiplication](https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-c/2023-0/mkl-sparse-mm.html).
 - [Inspector hints](https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-c/2025-0/mkl-sparse-set-mm-hint.html)
   and [optimization](https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-c/2025-0/mkl-sparse-optimize.html).
+
+## Follow-up on CSF3
+
+Two repeated 16-CPU allocations on Manchester CSF3 (AMD EPYC 9634,
+27 October 2026) are archived in [`benchmarks/csf3/`](../benchmarks/csf3/README.md).
+The [LaTeX user guide](paper/jacobsrays.tex) and [reading PDF](paper/jacobsrays.pdf)
+report the paired timings, setup and memory costs, and variability between
+these jobs. At a 128-cubed grid and 100,000 rays, eight-thread MKL gave
+6.07--7.50 times the LRT throughput and 4.65--5.25 times the TRT throughput
+of the single-threaded SciPy cached-transpose control, using the reciprocal
+of the sum of forward/adjoint medians. Sixteen threads had no consistent
+advantage across the two jobs. These are operator benchmarks; complete
+reconstruction performance remains unmeasured.
